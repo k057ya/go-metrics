@@ -53,7 +53,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 		Metric.Value = &gaugeVal
 
 	default:
-		http.Error(resp, "invalid metric type", http.StatusUnsupportedMediaType)
+		http.Error(resp, "invalid metric type", http.StatusBadRequest)
 		return
 	}
 
