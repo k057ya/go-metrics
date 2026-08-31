@@ -37,9 +37,6 @@ func Run() {
 		}
 		collected = collected[:0]
 	}
-	//	response, err := client.Post("http://127.0.0.1:8080/update/" +
-	//}
-
 }
 
 func sendMetric(metric Metric) error {
