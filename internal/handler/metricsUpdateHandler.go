@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	models "github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
 )
@@ -23,9 +24,9 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	}
 
 	// Извлечь значения из сегментов URL
-	metricType := req.PathValue("type")
-	metricName := req.PathValue("metric")
-	metricValue := req.PathValue("value")
+	metricType := chi.URLParam(req, "type")
+	metricName := chi.URLParam(req, "metric")
+	metricValue := chi.URLParam(req, "value")
 
 	// Проверить заполненность имени метрики
 	if metricName == "" {
