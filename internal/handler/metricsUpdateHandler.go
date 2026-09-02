@@ -76,7 +76,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	if err != nil {
 		http.Error(resp, "error marshalling json", http.StatusInternalServerError)
 	}
-	resp.Header().Set("content-type", "application/json")
+	resp.Header().Set("Content-Type", "application/json")
 	// устанавливаем код 200
 	resp.WriteHeader(http.StatusOK)
 	// пишем тело ответа

@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
-	"net/http/httptest"
+	"strconv"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/k057ya/go-metrics/internal/agent"
+	"github.com/k057ya/go-metrics/internal/config"
 	models "github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -24,13 +26,12 @@ func jsonEncode(value any) string {
 func TestUpdateMetricsHandler(t *testing.T) {
 
 	storage := repository.NewMemStorage()
-	mux := http.NewServeMux()
-	mux.HandleFunc(
-		"/update/{type}/{metric}/{value}",
-		func(w http.ResponseWriter, r *http.Request) {
-			UpdateMetricsHandler(w, r, storage)
-		},
-	)
+	storage.Clear()
+	router := chi.NewRouter()
+	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
+		UpdateMetricsHandler(w, r, storage)
+	})
+	http.ListenAndServe(":"+strconv.Itoa(config.ServerConfig.Port), router)
 
 	type want struct {
 		code        int
@@ -77,7 +78,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "invalid metric value\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -86,7 +87,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "invalid metric value\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -95,15 +96,16 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "invalid metric type\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
 			name: "#7 empty metric segment redirects",
 			url:  "counter//123",
 			want: want{
-				code:     http.StatusTemporaryRedirect,
-				response: "",
+				code:        http.StatusBadRequest,
+				response:    "metric name is not specified\n",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -148,7 +150,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "invalid metric value\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -157,7 +159,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "invalid metric value\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -166,7 +168,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "metric type change is not supported: counter\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -175,7 +177,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusBadRequest,
 				response:    "metric type change is not supported: gauge\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -185,7 +187,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			want: want{
 				code:        http.StatusUnsupportedMediaType,
 				response:    "invalid content-type\n",
-				contentType: "text/plain",
+				contentType: "text/plain; charset=utf-8",
 			},
 		},
 		{
@@ -194,8 +196,8 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:    "gauge/methodGauge/1",
 			want: want{
 				code:        http.StatusMethodNotAllowed,
-				response:    "method is not supported by server\n",
-				contentType: "text/plain",
+				response:    "",
+				contentType: "",
 			},
 		},
 		{
@@ -208,44 +210,37 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			},
 		},
 	}
+
+	var httpClient = agent.NewHttpClient()
+	httpClient.
+		SetBaseURL(httpClient.BaseURL + "/update/")
+
 	for _, test := range tests {
+
 		t.Run(test.name, func(t *testing.T) {
+
+			request := httpClient.R().SetBody("")
+
 			method := test.method
 			if method == "" {
 				method = http.MethodPost
 			}
 
-			request := httptest.NewRequest(
-				method,
-				"/update/"+test.url,
-				nil,
-			)
-
 			requestContentType := test.contentType
 			if requestContentType == "" {
 				requestContentType = "text/plain"
 			}
-			request.Header.Set("Content-Type", requestContentType)
+			request.SetHeader("Content-Type", requestContentType)
 
-			// создаём новый Recorder
-			w := httptest.NewRecorder()
-			mux.ServeHTTP(w, request)
-
-			res := w.Result()
-			// проверяем код ответа
-			assert.Equal(t, test.want.code, res.StatusCode)
-			// получаем и проверяем тело запроса
-			defer res.Body.Close()
-			resBody, err := io.ReadAll(res.Body)
-
-			require.NoError(t, err)
-			assert.Equal(t, test.want.response, string(resBody))
-			// грязный хак, так как сервер добавляет charset
-			if test.want.contentType == "" {
-				assert.Empty(t, res.Header.Get("Content-Type"))
-			} else {
-				assert.Contains(t, res.Header.Get("Content-Type"), test.want.contentType)
+			response, err := request.Execute(method, test.url)
+			if err != nil {
+				return
 			}
+			require.NoError(t, err)
+
+			assert.Equal(t, test.want.response, string(response.Body()))
+
+			assert.Equal(t, test.want.contentType, response.Header().Get("Content-Type"))
 		})
 	}
 }

@@ -14,6 +14,7 @@ type MetricsStorage interface {
 	Put(key string, metrics model.Metrics) (bool, error)
 	List() []model.Metrics
 	Delete(key string) bool
+	Clear() bool
 }
 
 type MemStorage struct {
@@ -83,6 +84,11 @@ func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
 func (storage MemStorage) Delete(key string) bool {
 	delete(storage.data, key)
 	return !storage.Exists(key)
+}
+
+func (storage MemStorage) Clear() bool {
+	storage.data = make(map[string]model.Metrics)
+	return len(storage.data) == 0
 }
 
 func NewMemStorage() *MemStorage {

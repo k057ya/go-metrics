@@ -12,7 +12,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/config"
 )
 
-func newHttpClient() *resty.Client {
+func NewHttpClient() *resty.Client {
 	return resty.New().
 		SetHeader("Content-Type", "text/plain").
 		SetBaseURL(config.ServerConfig.Address())
@@ -24,7 +24,7 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
-var httpClient = newHttpClient()
+var httpClient = NewHttpClient()
 
 func Run() {
 
