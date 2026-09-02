@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -10,6 +11,11 @@ import (
 
 const pollInterval = 2 * time.Second
 const reportInterval = 10 * time.Second
+
+var (
+	serverAddress = "http://localhost:8080"
+	httpClient    = &http.Client{}
+)
 
 type Metric struct {
 	ID    string `json:"id"`
@@ -40,17 +46,22 @@ func Run() {
 }
 
 func sendMetric(metric Metric) error {
-	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPost, `http://localhost:8080/update/`+metric.Type+`/`+metric.ID+`/`+metric.Value, nil)
+	req, err := http.NewRequest(http.MethodPost, serverAddress+`/update/`+metric.Type+`/`+metric.ID+`/`+metric.Value, nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	req.Header.Set("Content-Type", "text/plain")
-	_, err = client.Do(req)
+	response, err := httpClient.Do(req)
 
 	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("server returned status: %s", response.Status)
+	}
+
 	return nil
 }
 func fetchMetrics() []Metric {
