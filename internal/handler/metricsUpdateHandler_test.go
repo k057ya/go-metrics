@@ -3,12 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/agent"
-	"github.com/k057ya/go-metrics/internal/config"
 	models "github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -26,12 +25,16 @@ func jsonEncode(value any) string {
 func TestUpdateMetricsHandler(t *testing.T) {
 
 	storage := repository.NewMemStorage()
-	storage.Clear()
 	router := chi.NewRouter()
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
 		UpdateMetricsHandler(w, r, storage)
 	})
-	http.ListenAndServe(":"+strconv.Itoa(config.ServerConfig.Port), router)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var httpClient = agent.NewHttpClient()
+	httpClient.
+		SetBaseURL(server.URL + "/update/")
 
 	type want struct {
 		code        int
@@ -211,10 +214,6 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		},
 	}
 
-	var httpClient = agent.NewHttpClient()
-	httpClient.
-		SetBaseURL(httpClient.BaseURL + "/update/")
-
 	for _, test := range tests {
 
 		t.Run(test.name, func(t *testing.T) {
@@ -233,14 +232,13 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			request.SetHeader("Content-Type", requestContentType)
 
 			response, err := request.Execute(method, test.url)
-			if err != nil {
-				return
-			}
 			require.NoError(t, err)
 
 			assert.Equal(t, test.want.response, string(response.Body()))
 
 			assert.Equal(t, test.want.contentType, response.Header().Get("Content-Type"))
+
+			assert.Equal(t, test.want.code, response.StatusCode())
 		})
 	}
 }
