@@ -15,7 +15,7 @@ import (
 func NewHttpClient() *resty.Client {
 	return resty.New().
 		SetHeader("Content-Type", "text/plain").
-		SetBaseURL(config.ServerConfig.Address())
+		SetBaseURL(config.ClientConfig.Server.Address())
 }
 
 type Metric struct {
@@ -28,12 +28,12 @@ var httpClient = NewHttpClient()
 
 func Run() {
 
-	pollsPerReport := int(config.ClientConfig.ReportInterval / config.ClientConfig.PollInterval)
+	pollsPerReport := int(config.ClientConfig.ReportInterval.Interval / config.ClientConfig.PollInterval.Interval)
 
 	var collected []Metric
 	for {
 		for i := 0; i < pollsPerReport; i++ {
-			time.Sleep(config.ClientConfig.PollInterval)
+			time.Sleep(config.ClientConfig.PollInterval.Interval)
 			fresh := fetchMetrics()
 			collected = append(collected, fresh...)
 		}
