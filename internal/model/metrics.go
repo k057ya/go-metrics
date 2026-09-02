@@ -30,6 +30,6 @@ func (metrics Metrics) StringValue() string {
 	return "-"
 }
 
-func (metrics Metrics) Url() string {
+func (metrics Metrics) URL() string {
 	return fmt.Sprintf("/value/%s/%s", metrics.MType, metrics.ID)
 }

@@ -24,7 +24,7 @@ func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage reposit
 
 		html.WriteString(fmt.Sprintf(
 			`<li><a href="%s"><b>%s</b></a>: <pre>%s</pre></li>`,
-			metric.Url(),
+			metric.URL(),
 			metric.ID,
 			metric.StringValue(),
 		))

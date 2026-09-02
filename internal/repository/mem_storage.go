@@ -37,7 +37,7 @@ func (storage MemStorage) Get(key string) (model.Metrics, error) {
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
-		err = errors.New(fmt.Sprintf("key not found: %s", key))
+		err = fmt.Errorf("key not found: %s", key)
 	}
 	return metric, err
 }
@@ -57,7 +57,7 @@ func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
 		}
 
 		if savedMetric.MType != metrics.MType {
-			return false, errors.New(fmt.Sprintf("metric type change is not supported: %s", savedMetric.MType))
+			return false, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
 		}
 
 		switch metrics.MType {

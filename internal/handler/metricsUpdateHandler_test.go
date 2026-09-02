@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func json_encode(value any) string {
+func jsonEncode(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
 		panic(err)
@@ -49,7 +49,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/1",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(1))}),
+				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(1))}),
 				contentType: "application/json",
 			},
 		},
@@ -58,7 +58,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/1",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(2))}),
+				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(2))}),
 				contentType: "application/json",
 			},
 		},
@@ -67,7 +67,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/5",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(7))}),
+				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(7))}),
 				contentType: "application/json",
 			},
 		},
@@ -111,7 +111,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/gaugeVar1/1.25",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(1.25))}),
+				response:    jsonEncode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(1.25))}),
 				contentType: "application/json",
 			},
 		},
@@ -120,7 +120,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/gaugeVar1/-3.5",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(-3.5))}),
+				response:    jsonEncode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(-3.5))}),
 				contentType: "application/json",
 			},
 		},
@@ -129,7 +129,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/zeroCounter/0",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(0))}),
+				response:    jsonEncode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(0))}),
 				contentType: "application/json",
 			},
 		},
@@ -138,7 +138,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/zeroCounter/-5",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(-5))}),
+				response:    jsonEncode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(-5))}),
 				contentType: "application/json",
 			},
 		},
@@ -203,7 +203,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/scientificGauge/1e3",
 			want: want{
 				code:        http.StatusOK,
-				response:    json_encode(models.Metrics{ID: "scientificGauge", MType: "gauge", Value: new(float64(1000))}),
+				response:    jsonEncode(models.Metrics{ID: "scientificGauge", MType: "gauge", Value: new(float64(1000))}),
 				contentType: "application/json",
 			},
 		},
