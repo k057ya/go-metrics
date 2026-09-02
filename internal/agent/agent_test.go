@@ -139,7 +139,7 @@ func TestSendMetric(t *testing.T) {
 
 			var received receivedRequest
 
-			httpClient = NewHttpClient().
+			httpClient = NewHTTPClient().
 				SetBaseURL("http://metrics.test").
 				SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 					received = receivedRequest{

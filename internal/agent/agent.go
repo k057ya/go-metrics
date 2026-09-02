@@ -12,7 +12,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/config"
 )
 
-func NewHttpClient() *resty.Client {
+func NewHTTPClient() *resty.Client {
 	return resty.New().
 		SetHeader("Content-Type", "text/plain").
 		SetBaseURL(config.ClientConfig.Server.Address())
@@ -24,9 +24,11 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
-var httpClient = NewHttpClient()
+var httpClient *resty.Client
 
 func Run() {
+
+	httpClient = NewHTTPClient()
 
 	pollsPerReport := int(config.ClientConfig.ReportInterval.Interval / config.ClientConfig.PollInterval.Interval)
 

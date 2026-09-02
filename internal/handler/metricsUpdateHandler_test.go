@@ -32,7 +32,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	var httpClient = agent.NewHttpClient()
+	var httpClient = agent.NewHTTPClient()
 	httpClient.
 		SetBaseURL(server.URL + "/update/")
 
