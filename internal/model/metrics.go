@@ -1,8 +1,13 @@
-package models
+package model
+
+import (
+	"fmt"
+	"strconv"
+)
 
 const (
-	Counter = "counter"
-	Gauge   = "gauge"
+	MetricsTypeCounter = "counter"
+	MetricsTypeGauge   = "gauge"
 )
 
 // NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
@@ -16,4 +21,18 @@ type Metrics struct {
 	Delta *int64   `json:"delta,omitempty"`
 	Value *float64 `json:"value,omitempty"`
 	Hash  string   `json:"hash,omitempty"`
+}
+
+func (metrics Metrics) StringValue() string {
+	switch metrics.MType {
+	case MetricsTypeCounter:
+		return strconv.FormatInt(*metrics.Delta, 10)
+	case MetricsTypeGauge:
+		return strconv.FormatFloat(*metrics.Value, 'f', -1, 64)
+	}
+	return "-"
+}
+
+func (metrics Metrics) URL() string {
+	return fmt.Sprintf("/value/%s/%s", metrics.MType, metrics.ID)
 }
