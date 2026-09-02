@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -29,6 +28,6 @@ func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage rep
 	}
 
 	resp.WriteHeader(http.StatusOK)
-	resp.Write([]byte(fmt.Sprintf("<p>Метрика: <strong>%s</strong></p><p>Значение: <strong>%s</strong></p>", metric.ID, metric.StringValue())))
+	resp.Write([]byte(metric.StringValue()))
 
 }

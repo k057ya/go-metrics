@@ -25,7 +25,7 @@ func (metrics Metrics) StringValue() string {
 	case MetricsTypeCounter:
 		return fmt.Sprintf("%d", *metrics.Delta)
 	case MetricsTypeGauge:
-		return fmt.Sprintf("%f", *metrics.Value)
+		return fmt.Sprintf("%.*f", 3, *metrics.Value)
 	}
 	return "-"
 }
