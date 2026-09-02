@@ -135,13 +135,13 @@ func TestSendMetric(t *testing.T) {
 	// Это собрано с помощью AI, так как еще не достаточно разобрался в подмене
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			oldServerAddress := serverAddress
 			oldHTTPClient := httpClient
-			serverAddress = "http://metrics.test"
 
 			var received receivedRequest
-			httpClient = &http.Client{
-				Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+
+			httpClient = newHttpClient().
+				SetBaseURL("http://metrics.test").
+				SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 					received = receivedRequest{
 						method:      request.Method,
 						path:        request.URL.Path,
@@ -159,11 +159,9 @@ func TestSendMetric(t *testing.T) {
 						Header:     make(http.Header),
 						Request:    request,
 					}, nil
-				}),
-			}
+				}))
 
 			t.Cleanup(func() {
-				serverAddress = oldServerAddress
 				httpClient = oldHTTPClient
 			})
 

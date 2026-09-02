@@ -12,15 +12,19 @@ import (
 	"github.com/k057ya/go-metrics/internal/config"
 )
 
-var httpClient = resty.New().
-	SetHeader("Content-Type", "text/plain").
-	SetBaseURL(config.ServerConfig.Address())
+func newHttpClient() *resty.Client {
+	return resty.New().
+		SetHeader("Content-Type", "text/plain").
+		SetBaseURL(config.ServerConfig.Address())
+}
 
 type Metric struct {
 	ID    string `json:"id"`
 	Type  string `json:"type"`
 	Value string `json:"value"`
 }
+
+var httpClient = newHttpClient()
 
 func Run() {
 
@@ -54,7 +58,7 @@ func sendMetric(metric Metric) error {
 	}
 
 	if response.StatusCode() < http.StatusOK || response.StatusCode() >= http.StatusMultipleChoices {
-		return fmt.Errorf("server returned status: %s", response.Status)
+		return fmt.Errorf("server returned status: %s", response.Status())
 	}
 
 	return nil
