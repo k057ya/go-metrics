@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 const (
 	MetricsTypeCounter = "counter"
@@ -23,9 +26,9 @@ type Metrics struct {
 func (metrics Metrics) StringValue() string {
 	switch metrics.MType {
 	case MetricsTypeCounter:
-		return fmt.Sprintf("%d", *metrics.Delta)
+		return strconv.FormatInt(*metrics.Delta, 10)
 	case MetricsTypeGauge:
-		return fmt.Sprintf("%.*f", 3, *metrics.Value)
+		return strconv.FormatFloat(*metrics.Value, 'f', -1, 64)
 	}
 	return "-"
 }
