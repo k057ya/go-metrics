@@ -18,7 +18,8 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	}
 
 	// Проверить корректность заголовков
-	if req.Header.Get("Content-Type") != "text/plain" {
+	contentType := req.Header.Get("Content-Type")
+	if contentType != "" && contentType != "text/plain" {
 		http.Error(resp, "invalid content-type", http.StatusUnsupportedMediaType)
 		return
 	}
