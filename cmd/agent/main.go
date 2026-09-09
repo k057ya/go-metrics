@@ -28,7 +28,5 @@ func main() {
 	}
 
 	err := agent.Run(a)
-	if err != nil {
-		fmt.Println("Error starting agent: " + err.Error())
-	}
+	fmt.Println("Error starting agent: " + err.Error())
 }

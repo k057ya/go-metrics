@@ -64,7 +64,6 @@ func Run(agent Agent) error {
 				continue
 			}
 		}
-		collected = collected[:0]
 	}
 }
 
