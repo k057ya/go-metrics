@@ -6,11 +6,14 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	models "github.com/k057ya/go-metrics/internal/model"
-	"github.com/k057ya/go-metrics/internal/repository"
+	"github.com/k057ya/go-metrics/internal/model"
 )
 
-func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage repository.MetricsStorage) {
+type StorageWriter interface {
+	Update(key string, metrics model.Metrics) (model.Metrics, error)
+}
+
+func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage StorageWriter) {
 	// Проверить метод запроса
 	if req.Method != http.MethodPost {
 		http.Error(resp, "method is not supported by server", http.StatusMethodNotAllowed)
@@ -41,16 +44,16 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 		counterVal int64
 		err        error
 	)
-	Metric := models.Metrics{
+	Metric := model.Metrics{
 		ID:    metricName,
 		MType: metricType,
 	}
 	switch metricType {
-	case models.MetricsTypeCounter:
+	case model.MetricsTypeCounter:
 		counterVal, err = strconv.ParseInt(metricValue, 10, 64)
 		Metric.Delta = &counterVal
 
-	case models.MetricsTypeGauge:
+	case model.MetricsTypeGauge:
 		gaugeVal, err = strconv.ParseFloat(metricValue, 64)
 		Metric.Value = &gaugeVal
 
@@ -65,17 +68,16 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	}
 
 	// Сохранить метрику в хранилище
-	_, err = storage.Put(metricName, Metric)
+	savedMetric, err := storage.Update(metricName, Metric)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	savedMetric, _ := storage.Get(metricName)
+	// готовим вывод
 	marshal, err := json.Marshal(savedMetric)
-
 	if err != nil {
 		http.Error(resp, "error marshalling json", http.StatusInternalServerError)
+		return
 	}
 	resp.Header().Set("Content-Type", "application/json")
 	// устанавливаем код 200

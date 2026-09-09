@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/k057ya/go-metrics/internal/config"
 )
 
-func NewHTTPClient() *resty.Client {
-	return resty.New().
+func NewHTTPClient(baseURL string) HTTPClient {
+	return HTTPClient{resty.New().
 		SetHeader("Content-Type", "text/plain").
-		SetBaseURL(config.ClientConfig.Server.Address())
+		SetBaseURL(baseURL),
+	}
 }
 
 type Metric struct {
@@ -24,24 +24,42 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
-var httpClient *resty.Client
+type HTTPClient struct {
+	*resty.Client
+}
 
-func Run() {
+// Короткий вызов со всеми настройками
+func (c *HTTPClient) Request(url string) (*resty.Response, error) {
+	return c.R().
+		SetBody("").
+		SetHeader("Content-Type", "text/plain").
+		Post(url)
+}
 
-	httpClient = NewHTTPClient()
+type Agent struct {
+	Client         HTTPClient
+	PollInterval   time.Duration
+	ReportInterval time.Duration
+	PollCount      int64
+}
 
-	pollsPerReport := int(config.ClientConfig.ReportInterval.Interval / config.ClientConfig.PollInterval.Interval)
+func Run(agent Agent) error {
 
-	var collected []Metric
+	if agent.ReportInterval < agent.PollInterval {
+		return fmt.Errorf("poll interval must be less than %s", agent.ReportInterval.String())
+	}
+
+	pollsPerReport := int(agent.ReportInterval / agent.PollInterval)
+
 	for {
+		var collected []Metric
 		for i := 0; i < pollsPerReport; i++ {
-			time.Sleep(config.ClientConfig.PollInterval.Interval)
-			fresh := fetchMetrics()
-			collected = append(collected, fresh...)
+			time.Sleep(agent.PollInterval)
+			collected = agent.fetchMetrics()
 		}
 
 		for _, metric := range collected {
-			if err := sendMetric(metric); err != nil {
+			if err := sendMetric(metric, agent.Client); err != nil {
 				// TODO
 				continue
 			}
@@ -50,10 +68,9 @@ func Run() {
 	}
 }
 
-func sendMetric(metric Metric) error {
+func sendMetric(metric Metric, client HTTPClient) error {
 
-	response, err := httpClient.R().SetBody([]byte("")).
-		Post(`/update/` + metric.Type + `/` + metric.ID + `/` + metric.Value)
+	response, err := client.Request(`/update/` + metric.Type + `/` + metric.ID + `/` + metric.Value)
 
 	if err != nil {
 		return err
@@ -65,9 +82,11 @@ func sendMetric(metric Metric) error {
 
 	return nil
 }
-func fetchMetrics() []Metric {
+func (a Agent) fetchMetrics() []Metric {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
+
+	a.PollCount += 1
 
 	gauge := func(id string, value float64) Metric {
 		return Metric{
@@ -113,7 +132,7 @@ func fetchMetrics() []Metric {
 		gauge("StackSys", float64(stats.StackSys)),
 		gauge("Sys", float64(stats.Sys)),
 		gauge("TotalAlloc", float64(stats.TotalAlloc)),
-		counter("PollCount", 1),
+		counter("PollCount", a.PollCount),
 		gauge("RandomValue", rand.Float64()),
 	}
 }

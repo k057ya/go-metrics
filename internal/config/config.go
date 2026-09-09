@@ -53,6 +53,9 @@ func (c *ClientInterval) Set(value string) error {
 	if err != nil {
 		return err
 	}
+	if seconds <= 0 {
+		return errors.New("invalid client interval")
+	}
 	c.Interval = time.Duration(seconds) * time.Second
 	return nil
 }
