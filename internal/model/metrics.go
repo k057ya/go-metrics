@@ -1,8 +1,8 @@
-package models
+package model
 
 const (
-	Counter = "counter"
-	Gauge   = "gauge"
+	MetricsTypeCounter = "counter"
+	MetricsTypeGauge   = "gauge"
 )
 
 // NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
@@ -16,4 +16,8 @@ type Metrics struct {
 	Delta *int64   `json:"delta,omitempty"`
 	Value *float64 `json:"value,omitempty"`
 	Hash  string   `json:"hash,omitempty"`
+}
+
+func (metrics Metrics) getValue() *float64 {
+	return metrics.Value
 }
