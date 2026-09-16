@@ -14,6 +14,7 @@ type MetricsStorage interface {
 	Put(key string, metrics model.Metrics) (bool, error)
 	List() []model.Metrics
 	Delete(key string) bool
+	Clear() bool
 }
 
 type MemStorage struct {
@@ -37,7 +38,7 @@ func (storage MemStorage) Get(key string) (model.Metrics, error) {
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
-		err = errors.New(fmt.Sprintf("key not found: %s", key))
+		err = fmt.Errorf("key not found: %s", key)
 	}
 	return metric, err
 }
@@ -57,7 +58,7 @@ func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
 		}
 
 		if savedMetric.MType != metrics.MType {
-			return false, errors.New(fmt.Sprintf("metric type change is not supported: %s", savedMetric.MType))
+			return false, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
 		}
 
 		switch metrics.MType {
@@ -83,6 +84,11 @@ func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
 func (storage MemStorage) Delete(key string) bool {
 	delete(storage.data, key)
 	return !storage.Exists(key)
+}
+
+func (storage MemStorage) Clear() bool {
+	storage.data = make(map[string]model.Metrics)
+	return len(storage.data) == 0
 }
 
 func NewMemStorage() *MemStorage {

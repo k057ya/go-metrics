@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	models "github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
 )
@@ -17,15 +18,16 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	}
 
 	// Проверить корректность заголовков
-	if req.Header.Get("Content-Type") != "text/plain" {
+	contentType := req.Header.Get("Content-Type")
+	if contentType != "" && contentType != "text/plain" {
 		http.Error(resp, "invalid content-type", http.StatusUnsupportedMediaType)
 		return
 	}
 
 	// Извлечь значения из сегментов URL
-	metricType := req.PathValue("type")
-	metricName := req.PathValue("metric")
-	metricValue := req.PathValue("value")
+	metricType := chi.URLParam(req, "type")
+	metricName := chi.URLParam(req, "metric")
+	metricValue := chi.URLParam(req, "value")
 
 	// Проверить заполненность имени метрики
 	if metricName == "" {
@@ -75,7 +77,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 	if err != nil {
 		http.Error(resp, "error marshalling json", http.StatusInternalServerError)
 	}
-	resp.Header().Set("content-type", "application/json")
+	resp.Header().Set("Content-Type", "application/json")
 	// устанавливаем код 200
 	resp.WriteHeader(http.StatusOK)
 	// пишем тело ответа

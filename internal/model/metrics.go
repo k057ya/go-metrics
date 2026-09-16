@@ -1,5 +1,10 @@
 package model
 
+import (
+	"fmt"
+	"strconv"
+)
+
 const (
 	MetricsTypeCounter = "counter"
 	MetricsTypeGauge   = "gauge"
@@ -18,6 +23,16 @@ type Metrics struct {
 	Hash  string   `json:"hash,omitempty"`
 }
 
-func (metrics Metrics) getValue() *float64 {
-	return metrics.Value
+func (metrics Metrics) StringValue() string {
+	switch metrics.MType {
+	case MetricsTypeCounter:
+		return strconv.FormatInt(*metrics.Delta, 10)
+	case MetricsTypeGauge:
+		return strconv.FormatFloat(*metrics.Value, 'f', -1, 64)
+	}
+	return "-"
+}
+
+func (metrics Metrics) URL() string {
+	return fmt.Sprintf("/value/%s/%s", metrics.MType, metrics.ID)
 }

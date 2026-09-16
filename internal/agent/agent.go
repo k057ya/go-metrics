@@ -7,15 +7,16 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/k057ya/go-metrics/internal/config"
 )
 
-const pollInterval = 2 * time.Second
-const reportInterval = 10 * time.Second
-
-var (
-	serverAddress = "http://localhost:8080"
-	httpClient    = &http.Client{}
-)
+func NewHttpClient() *resty.Client {
+	return resty.New().
+		SetHeader("Content-Type", "text/plain").
+		SetBaseURL(config.ServerConfig.Address())
+}
 
 type Metric struct {
 	ID    string `json:"id"`
@@ -23,14 +24,16 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
+var httpClient = NewHttpClient()
+
 func Run() {
 
-	pollsPerReport := int(reportInterval / pollInterval)
+	pollsPerReport := int(config.ClientConfig.ReportInterval / config.ClientConfig.PollInterval)
 
 	var collected []Metric
 	for {
 		for i := 0; i < pollsPerReport; i++ {
-			time.Sleep(pollInterval)
+			time.Sleep(config.ClientConfig.PollInterval)
 			fresh := fetchMetrics()
 			collected = append(collected, fresh...)
 		}
@@ -46,20 +49,16 @@ func Run() {
 }
 
 func sendMetric(metric Metric) error {
-	req, err := http.NewRequest(http.MethodPost, serverAddress+`/update/`+metric.Type+`/`+metric.ID+`/`+metric.Value, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "text/plain")
-	response, err := httpClient.Do(req)
+
+	response, err := httpClient.R().SetBody([]byte("")).
+		Post(`/update/` + metric.Type + `/` + metric.ID + `/` + metric.Value)
 
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
 
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("server returned status: %s", response.Status)
+	if response.StatusCode() < http.StatusOK || response.StatusCode() >= http.StatusMultipleChoices {
+		return fmt.Errorf("server returned status: %s", response.Status())
 	}
 
 	return nil
