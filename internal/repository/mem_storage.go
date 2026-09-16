@@ -7,16 +7,6 @@ import (
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
-type MetricsStorage interface {
-	Exists(key string) bool
-	Get(key string) (model.Metrics, error)
-	Upsert(metrics model.Metrics) (model.Metrics, error)
-	Put(key string, metrics model.Metrics) (bool, error)
-	List() []model.Metrics
-	Delete(key string) bool
-	Clear() bool
-}
-
 type MemStorage struct {
 	data map[string]model.Metrics
 }
@@ -43,28 +33,28 @@ func (storage MemStorage) Get(key string) (model.Metrics, error) {
 	return metric, err
 }
 
-func (storage MemStorage) Upsert(metrics model.Metrics) (model.Metrics, error) {
+func (storage MemStorage) store(metrics model.Metrics) (model.Metrics, error) {
 	storage.data[metrics.ID] = metrics
-	return metrics, nil
+	return storage.Get(metrics.ID)
 }
 
-func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
+func (storage MemStorage) Update(key string, metrics model.Metrics) (model.Metrics, error) {
 
 	if storage.Exists(key) {
 		savedMetric, err := storage.Get(key)
 
 		if err != nil {
-			return false, err
+			return metrics, err
 		}
 
 		if savedMetric.MType != metrics.MType {
-			return false, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
+			return metrics, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
 		}
 
 		switch metrics.MType {
 		case model.MetricsTypeCounter:
 			if metrics.Delta == nil || savedMetric.Delta == nil {
-				return false, errors.New("counter delta is not specified")
+				return metrics, errors.New("counter delta is not specified")
 			}
 
 			delta := *metrics.Delta + *savedMetric.Delta
@@ -73,12 +63,7 @@ func (storage MemStorage) Put(key string, metrics model.Metrics) (bool, error) {
 		}
 	}
 
-	_, err := storage.Upsert(metrics)
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return storage.store(metrics)
 }
 
 func (storage MemStorage) Delete(key string) bool {

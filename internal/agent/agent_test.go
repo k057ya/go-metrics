@@ -20,6 +20,9 @@ func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 }
 
 func TestFetchMetrics(t *testing.T) {
+
+	agent := Agent{}
+
 	tests := []struct {
 		name     string
 		wantType string
@@ -55,7 +58,7 @@ func TestFetchMetrics(t *testing.T) {
 		{name: "RandomValue", wantType: "gauge"},
 	}
 
-	got := fetchMetrics()
+	got := agent.fetchMetrics()
 	require.Len(t, got, len(tests))
 
 	metricsByID := make(map[string]Metric, len(got))
@@ -132,40 +135,34 @@ func TestSendMetric(t *testing.T) {
 		},
 	}
 
-	// Это собрано с помощью AI, так как еще не достаточно разобрался в подмене
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			oldHTTPClient := httpClient
 
 			var received receivedRequest
 
-			httpClient = NewHttpClient().
-				SetBaseURL("http://metrics.test").
-				SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
-					received = receivedRequest{
-						method:      request.Method,
-						path:        request.URL.Path,
-						contentType: request.Header.Get("Content-Type"),
-					}
+			client := NewHTTPClient("http://metrics.test")
 
-					if test.transportErr != nil {
-						return nil, test.transportErr
-					}
+			client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				received = receivedRequest{
+					method:      request.Method,
+					path:        request.URL.Path,
+					contentType: request.Header.Get("Content-Type"),
+				}
 
-					return &http.Response{
-						StatusCode: test.statusCode,
-						Status:     strconv.Itoa(test.statusCode) + " " + http.StatusText(test.statusCode),
-						Body:       io.NopCloser(strings.NewReader("")),
-						Header:     make(http.Header),
-						Request:    request,
-					}, nil
-				}))
+				if test.transportErr != nil {
+					return nil, test.transportErr
+				}
 
-			t.Cleanup(func() {
-				httpClient = oldHTTPClient
-			})
+				return &http.Response{
+					StatusCode: test.statusCode,
+					Status:     strconv.Itoa(test.statusCode) + " " + http.StatusText(test.statusCode),
+					Body:       io.NopCloser(strings.NewReader("")),
+					Header:     make(http.Header),
+					Request:    request,
+				}, nil
+			}))
 
-			err := sendMetric(test.metric)
+			err := sendMetric(test.metric, client)
 			if test.wantErr {
 				assert.Error(t, err)
 			} else {

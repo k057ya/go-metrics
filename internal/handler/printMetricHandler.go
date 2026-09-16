@@ -4,10 +4,14 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/k057ya/go-metrics/internal/repository"
+	"github.com/k057ya/go-metrics/internal/model"
 )
 
-func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage repository.MetricsStorage) {
+type StorageReader interface {
+	Get(key string) (model.Metrics, error)
+}
+
+func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage StorageReader) {
 
 	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
 

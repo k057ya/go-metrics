@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/agent"
-	models "github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,9 +32,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	var httpClient = agent.NewHttpClient()
-	httpClient.
-		SetBaseURL(server.URL + "/update/")
+	var httpClient = agent.NewHTTPClient(server.URL + "/update/")
 
 	type want struct {
 		code        int
@@ -53,7 +51,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/1",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(1))}),
+				response:    jsonEncode(model.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(1))}),
 				contentType: "application/json",
 			},
 		},
@@ -62,7 +60,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/1",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(2))}),
+				response:    jsonEncode(model.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(2))}),
 				contentType: "application/json",
 			},
 		},
@@ -71,7 +69,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/counterVar1/5",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(7))}),
+				response:    jsonEncode(model.Metrics{ID: "counterVar1", MType: "counter", Delta: new(int64(7))}),
 				contentType: "application/json",
 			},
 		},
@@ -116,7 +114,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/gaugeVar1/1.25",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(1.25))}),
+				response:    jsonEncode(model.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(1.25))}),
 				contentType: "application/json",
 			},
 		},
@@ -125,7 +123,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/gaugeVar1/-3.5",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(-3.5))}),
+				response:    jsonEncode(model.Metrics{ID: "gaugeVar1", MType: "gauge", Value: new(float64(-3.5))}),
 				contentType: "application/json",
 			},
 		},
@@ -134,7 +132,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/zeroCounter/0",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(0))}),
+				response:    jsonEncode(model.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(0))}),
 				contentType: "application/json",
 			},
 		},
@@ -143,7 +141,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "counter/zeroCounter/-5",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(-5))}),
+				response:    jsonEncode(model.Metrics{ID: "zeroCounter", MType: "counter", Delta: new(int64(-5))}),
 				contentType: "application/json",
 			},
 		},
@@ -208,7 +206,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 			url:  "gauge/scientificGauge/1e3",
 			want: want{
 				code:        http.StatusOK,
-				response:    jsonEncode(models.Metrics{ID: "scientificGauge", MType: "gauge", Value: new(float64(1000))}),
+				response:    jsonEncode(model.Metrics{ID: "scientificGauge", MType: "gauge", Value: new(float64(1000))}),
 				contentType: "application/json",
 			},
 		},

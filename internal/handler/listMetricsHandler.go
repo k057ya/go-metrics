@@ -5,10 +5,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/k057ya/go-metrics/internal/repository"
+	"github.com/k057ya/go-metrics/internal/model"
 )
 
-func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.MetricsStorage) {
+type StorageLister interface {
+	List() []model.Metrics
+}
+
+func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage StorageLister) {
 
 	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
 	resp.WriteHeader(http.StatusOK)

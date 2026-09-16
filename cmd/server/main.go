@@ -1,8 +1,9 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/config"
@@ -13,6 +14,10 @@ import (
 func main() {
 
 	storage := repository.NewMemStorage()
+
+	flag.Var(config.ServerConfig, "a", "Server host and port")
+
+	flag.Parse()
 
 	router := chi.NewRouter()
 	// List all metrics
@@ -27,7 +32,10 @@ func main() {
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, req *http.Request) {
 		handler.UpdateMetricsHandler(w, req, storage)
 	})
-	err := http.ListenAndServe(":"+strconv.Itoa(config.ServerConfig.Port), router)
+
+	fmt.Println("Starting server on " + config.ServerConfig.String() + "...")
+
+	err := http.ListenAndServe(config.ServerConfig.String(), router)
 
 	if err != nil {
 		panic(err)
