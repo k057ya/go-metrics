@@ -47,6 +47,7 @@ func Run(agent Agent) error {
 
 	if agent.ReportInterval < agent.PollInterval {
 		fmt.Println("poll interval must be less than report interval, falling back to default values")
+		// TODO: remove hardcode before review
 		agent.ReportInterval = 10 * time.Second
 		agent.PollInterval = 2 * time.Second
 	}
