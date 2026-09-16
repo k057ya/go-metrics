@@ -46,7 +46,9 @@ type Agent struct {
 func Run(agent Agent) error {
 
 	if agent.ReportInterval < agent.PollInterval {
-		return fmt.Errorf("poll interval must be less than %s", agent.ReportInterval.String())
+		fmt.Println("poll interval must be less than report interval, falling back to default values")
+		agent.ReportInterval = 10 * time.Second
+		agent.PollInterval = 2 * time.Second
 	}
 
 	pollsPerReport := int(agent.ReportInterval / agent.PollInterval)
