@@ -53,8 +53,16 @@ func main() {
 	router.Get("/value/{type}/{metric}", func(w http.ResponseWriter, req *http.Request) {
 		handler.PrintMetricHandler(w, req, storage)
 	})
+	// JSON: Get specific metric value
+	router.Post("/value", func(w http.ResponseWriter, req *http.Request) {
+		handler.PrintMetricHandler(w, req, storage)
+	})
 	// Insert or update metric
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, req *http.Request) {
+		handler.UpdateMetricsHandler(w, req, storage)
+	})
+	// JSON: Insert or update metric
+	router.Post("/update", func(w http.ResponseWriter, req *http.Request) {
 		handler.UpdateMetricsHandler(w, req, storage)
 	})
 

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -13,10 +15,33 @@ type StorageReader interface {
 
 func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage StorageReader) {
 
-	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var metricName string
+	var metricType string
 
-	metricName := chi.URLParam(req, "metric")
-	metricType := chi.URLParam(req, "type")
+	if req.Method == http.MethodPost {
+		// POST JSON
+		var rm model.Metrics
+		var buf bytes.Buffer
+		// читаем тело запроса
+		_, err := buf.ReadFrom(req.Body)
+		if err != nil {
+			http.Error(resp, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// десериализуем JSON в RequestMetric
+		if err = json.Unmarshal(buf.Bytes(), &rm); err != nil {
+			http.Error(resp, err.Error(), http.StatusBadRequest)
+			return
+		}
+		metricName = rm.ID
+		metricType = rm.MType
+
+	} else {
+		// GET URL PARAMS
+		metricName = chi.URLParam(req, "metric")
+		metricType = chi.URLParam(req, "type")
+	}
+
 	metric, err := storage.Get(metricName)
 
 	if err != nil {
@@ -30,8 +55,12 @@ func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage Sto
 		resp.Write([]byte("Metric has invalid type"))
 		return
 	}
-
+	obj, err := json.Marshal(metric)
+	if err != nil {
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp.Header().Set("Content-Type", "application/json")
 	resp.WriteHeader(http.StatusOK)
-	resp.Write([]byte(metric.StringValue()))
-
+	resp.Write(obj)
 }

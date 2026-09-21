@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"net/http"
 	"time"
 
@@ -49,7 +50,9 @@ func Log(next http.Handler) http.Handler {
 		next.ServeHTTP(lw, r)
 
 		since := time.Since(start)
-
+		var buf bytes.Buffer
+		// читаем тело запроса
+		_, _ = buf.ReadFrom(r.Body)
 		logger.Log.Info("REQUEST",
 			zap.String("uri", uri),
 			zap.String("method", method),

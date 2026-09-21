@@ -171,7 +171,7 @@ func TestSendMetric(t *testing.T) {
 
 			assert.Equal(t, http.MethodPost, received.method)
 			assert.Equal(t, test.wantPath, received.path)
-			assert.Equal(t, "text/plain", received.contentType)
+			assert.Equal(t, "application/json", received.contentType)
 		})
 	}
 }
