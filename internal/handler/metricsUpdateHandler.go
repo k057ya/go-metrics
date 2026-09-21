@@ -91,18 +91,11 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	}
 	// готовим вывод
 	resp.WriteHeader(http.StatusOK)
-	switch contentType {
-	case "text/plain", "":
-		resp.Header().Set("Content-Type", "application/json")
-		resp.Write([]byte(savedMetric.StringValue()))
-	case "application/json":
-		obj, err := json.Marshal(savedMetric)
-		if err != nil {
-			http.Error(resp, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		resp.Header().Set("Content-Type", "application/json")
-		resp.Write(obj)
+	obj, err := json.Marshal(savedMetric)
+	if err != nil {
+		http.Error(resp, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
+	resp.Header().Set("Content-Type", "application/json")
+	resp.Write(obj)
 }
