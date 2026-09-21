@@ -8,6 +8,7 @@ import (
 
 	"github.com/caarlos0/env/v6"
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/handler"
 	"github.com/k057ya/go-metrics/internal/logger"
@@ -43,6 +44,8 @@ func main() {
 	}
 
 	router := chi.NewRouter()
+	// Add chi middleware to stripslashes
+	router.Use(chimiddleware.StripSlashes)
 	// Add logger middleware for all routes
 	router.Use(middleware.Log)
 	// List all metrics
@@ -54,7 +57,7 @@ func main() {
 		handler.PrintMetricHandler(w, req, storage)
 	})
 	// JSON: Get specific metric value
-	router.Post("/value", func(w http.ResponseWriter, req *http.Request) {
+	router.Post("/value/", func(w http.ResponseWriter, req *http.Request) {
 		handler.PrintMetricHandler(w, req, storage)
 	})
 	// Insert or update metric
