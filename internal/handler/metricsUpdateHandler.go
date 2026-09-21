@@ -90,12 +90,12 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 		return
 	}
 	// готовим вывод
-	resp.WriteHeader(http.StatusOK)
 	obj, err := json.Marshal(savedMetric)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	resp.Header().Set("Content-Type", "application/json")
+	resp.WriteHeader(http.StatusOK)
 	resp.Write(obj)
 }
