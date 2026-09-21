@@ -37,7 +37,10 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 			ID:    metricName,
 			MType: metricType,
 		}
-
+		if err := Metric.ValidateType(); err != nil {
+			http.Error(resp, err.Error(), http.StatusBadRequest)
+			return
+		}
 		err := Metric.Parse(urlValue)
 		if err != nil {
 			http.Error(resp, "invalid metric value", http.StatusBadRequest)

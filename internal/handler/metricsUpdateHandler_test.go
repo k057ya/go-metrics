@@ -92,15 +92,15 @@ func TestUpdateMetricsHandler(t *testing.T) {
 				contentType: "text/plain; charset=utf-8",
 			},
 		},
-		//{
-		//	name: "#6 unknown type",
-		//	url:  "switcher/name/123",
-		//	want: want{
-		//		code:        http.StatusBadRequest,
-		//		response:    "invalid metric type\n",
-		//		contentType: "text/plain; charset=utf-8",
-		//	},
-		//},
+		{
+			name: "#6 unknown type",
+			url:  "switcher/name/123",
+			want: want{
+				code:        http.StatusBadRequest,
+				response:    "invalid metric type\n",
+				contentType: "text/plain; charset=utf-8",
+			},
+		},
 		{
 			name: "#7 empty metric segment redirects",
 			url:  "counter//123",

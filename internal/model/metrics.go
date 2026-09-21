@@ -69,11 +69,24 @@ func (metrics *Metrics) ValidateValue() error {
 			err = errors.New("metrics value is not set")
 		}
 	default:
-		err = errors.New("unknown metric type")
+		err = errors.New("invalid metric type")
 	}
 	if err != nil {
 		return err
 	}
 	return nil
+}
 
+func (metrics *Metrics) ValidateType() error {
+	var err error
+	switch metrics.MType {
+	case MetricsTypeCounter:
+	case MetricsTypeGauge:
+	default:
+		err = errors.New("invalid metric type")
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }
