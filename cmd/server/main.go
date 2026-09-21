@@ -57,7 +57,7 @@ func main() {
 		handler.PrintMetricHandler(w, req, storage)
 	})
 	// JSON: Get specific metric value
-	router.Post("/value/", func(w http.ResponseWriter, req *http.Request) {
+	router.Post("/value", func(w http.ResponseWriter, req *http.Request) {
 		handler.PrintMetricHandler(w, req, storage)
 	})
 	// Insert or update metric
