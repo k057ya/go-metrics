@@ -27,7 +27,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 
 	// Проверить корректность заголовков
 	switch req.Header.Get("Content-Type") {
-	case "text/plain":
+	case "text/plain", "":
 		// Извлечь значения из сегментов URL
 		metricType = chi.URLParam(req, "type")
 		metricName = chi.URLParam(req, "metric")
