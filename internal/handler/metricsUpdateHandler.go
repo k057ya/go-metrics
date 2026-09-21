@@ -26,7 +26,8 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	}
 
 	// Проверить корректность заголовков
-	switch req.Header.Get("Content-Type") {
+	contentType := req.Header.Get("Content-Type")
+	switch contentType {
 	case "text/plain", "":
 		// Извлечь значения из сегментов URL
 		metricType = chi.URLParam(req, "type")
@@ -89,13 +90,19 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 		return
 	}
 	// готовим вывод
-	obj, err := json.Marshal(savedMetric)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	resp.Header().Set("Content-Type", "application/json")
 	resp.WriteHeader(http.StatusOK)
-	resp.Write(obj)
+	switch contentType {
+	case "text/plain", "":
+		resp.Header().Set("Content-Type", "application/json")
+		resp.Write([]byte(savedMetric.StringValue()))
+	case "application/json":
+		obj, err := json.Marshal(savedMetric)
+		if err != nil {
+			http.Error(resp, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resp.Header().Set("Content-Type", "application/json")
+		resp.Write(obj)
+	}
 
 }
