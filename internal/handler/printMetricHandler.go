@@ -55,12 +55,22 @@ func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage Sto
 		resp.Write([]byte("Metric has invalid type"))
 		return
 	}
-	obj, err := json.Marshal(metric)
-	if err != nil {
-		http.Error(resp, err.Error(), http.StatusInternalServerError)
-		return
+
+	contentType := req.Header.Get("Content-Type")
+	switch contentType {
+	case "text/plain", "":
+		resp.Header().Set("Content-Type", "application/json")
+		resp.WriteHeader(http.StatusOK)
+		resp.Write([]byte(metric.StringValue()))
+
+	case "application/json":
+		obj, err := json.Marshal(metric)
+		if err != nil {
+			http.Error(resp, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		resp.Header().Set("Content-Type", "application/json")
+		resp.WriteHeader(http.StatusOK)
+		resp.Write(obj)
 	}
-	resp.Header().Set("Content-Type", "application/json")
-	resp.WriteHeader(http.StatusOK)
-	resp.Write(obj)
 }
