@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"time"
 
@@ -42,6 +43,13 @@ func Log(next http.Handler) http.Handler {
 		uri := r.URL.Path
 		method := r.Method
 		rd := &ResponseData{}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "cannot read request body", http.StatusBadRequest)
+			return
+		}
+		// Восстанавливаем поток, чтобы обработчик тоже мог прочитать тело.
+		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		// replace writer
 		lw := &LoggableResponseWriter{w, rd}
@@ -50,12 +58,11 @@ func Log(next http.Handler) http.Handler {
 		next.ServeHTTP(lw, r)
 
 		since := time.Since(start)
-		var buf bytes.Buffer
-		// читаем тело запроса
-		_, _ = buf.ReadFrom(r.Body)
+
 		logger.Log.Info("REQUEST",
 			zap.String("uri", uri),
 			zap.String("method", method),
+			zap.ByteString("body", body),
 			zap.String("time", since.String()),
 		)
 
