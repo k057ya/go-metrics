@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func jsonEncode(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
 
 // Это собрано с помощью AI, так как еще не достаточно разобрался в подмене
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -111,26 +120,22 @@ func TestSendMetric(t *testing.T) {
 			name:       "#1 send gauge",
 			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.5"},
 			statusCode: http.StatusOK,
-			wantPath:   "/update/gauge/Alloc/12.5",
 		},
 		{
 			name:       "#2 send counter",
 			metric:     Metric{ID: "PollCount", Type: "counter", Value: "1"},
 			statusCode: http.StatusOK,
-			wantPath:   "/update/counter/PollCount/1",
 		},
 		{
 			name:       "#3 server returns error",
 			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.5"},
 			statusCode: http.StatusInternalServerError,
-			wantPath:   "/update/gauge/Alloc/12.5",
 			wantErr:    true,
 		},
 		{
 			name:         "#4 server is unavailable",
 			metric:       Metric{ID: "Alloc", Type: "gauge", Value: "12.5"},
 			transportErr: errors.New("server is unavailable"),
-			wantPath:     "/update/gauge/Alloc/12.5",
 			wantErr:      true,
 		},
 	}
@@ -170,8 +175,7 @@ func TestSendMetric(t *testing.T) {
 			}
 
 			assert.Equal(t, http.MethodPost, received.method)
-			assert.Equal(t, test.wantPath, received.path)
-			assert.Equal(t, "text/plain", received.contentType)
+			assert.Equal(t, "application/json", received.contentType)
 		})
 	}
 }

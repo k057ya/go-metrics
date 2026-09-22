@@ -43,6 +43,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		name        string
 		method      string
 		url         string
+		body        string
 		want        want
 		contentType string
 	}{
@@ -184,7 +185,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		{
 			name:        "#16 unsupported content type",
 			url:         "gauge/contentTypeGauge/1",
-			contentType: "application/json",
+			contentType: "application/xml",
 			want: want{
 				code:        http.StatusUnsupportedMediaType,
 				response:    "invalid content-type\n",
@@ -217,6 +218,10 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 
 			request := httpClient.R().SetBody("")
+
+			if test.body != "" {
+				request.SetBody(test.body)
+			}
 
 			method := test.method
 			if method == "" {
