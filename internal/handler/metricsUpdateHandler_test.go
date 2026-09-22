@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -24,7 +25,13 @@ func jsonEncode(value any) string {
 
 func TestUpdateMetricsHandler(t *testing.T) {
 
-	storage := repository.NewMemStorage()
+	file, err := os.CreateTemp(t.TempDir(), "metrics-storage-*.json")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, file.Close())
+	})
+
+	storage := repository.NewMemStorage(file, false, 0)
 	router := chi.NewRouter()
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
 		UpdateMetricsHandler(w, r, storage)
