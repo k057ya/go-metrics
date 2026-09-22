@@ -53,7 +53,7 @@ func Compress(next http.Handler) http.Handler {
 		ow := w
 
 		contentType := r.Header.Get("Content-Type")
-		if contentType == "application/json" || contentType == "text/html" {
+		if contentType == "application/json" || contentType == "text/html" || contentType == "" {
 
 			// check if client supports gzip
 			a := r.Header.Get("Accept-Encoding")
