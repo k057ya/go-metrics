@@ -27,6 +27,10 @@ func (c compressedWriter) WriteHeader(statusCode int) {
 	c.w.WriteHeader(statusCode)
 }
 
+func (c compressedWriter) Close() {
+	c.zw.Close()
+}
+
 type compressedReader struct {
 	r  io.ReadCloser
 	zr *gzip.Reader
@@ -57,12 +61,14 @@ func Compress(next http.Handler) http.Handler {
 				// replace writer
 				cw := &compressedWriter{w, gzip.NewWriter(w)}
 				ow = cw
+				defer cw.Close()
 			}
 
 			e := r.Header.Get("Content-Encoding")
 			if strings.Contains(e, "gzip") {
 				cr, _ := gzip.NewReader(r.Body)
 				r.Body = &compressedReader{r.Body, cr}
+				defer cr.Close()
 			}
 
 		}
