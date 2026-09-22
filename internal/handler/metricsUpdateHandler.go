@@ -15,8 +15,6 @@ type StorageWriter interface {
 
 func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage StorageWriter) {
 
-	var metricType string
-	var metricName string
 	var Metric model.Metrics
 
 	// Проверить метод запроса
@@ -30,13 +28,11 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	switch contentType {
 	case "text/plain", "":
 		// Извлечь значения из сегментов URL
-		metricType = chi.URLParam(req, "type")
-		metricName = chi.URLParam(req, "metric")
 		urlValue := chi.URLParam(req, "value")
 
 		Metric = model.Metrics{
-			ID:    metricName,
-			MType: metricType,
+			ID:    chi.URLParam(req, "metric"),
+			MType: chi.URLParam(req, "type"),
 		}
 		if err := Metric.ValidateType(); err != nil {
 			http.Error(resp, err.Error(), http.StatusBadRequest)
@@ -73,8 +69,8 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 		return
 	}
 
-	if Metric.MType != model.MetricsTypeCounter && Metric.MType != model.MetricsTypeGauge {
-		http.Error(resp, "invalid metric type", http.StatusBadRequest)
+	if err := Metric.ValidateType(); err != nil {
+		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -84,7 +80,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	}
 
 	// Сохранить метрику в хранилище
-	savedMetric, err := storage.Update(metricName, Metric)
+	savedMetric, err := storage.Update(Metric.ID, Metric)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
