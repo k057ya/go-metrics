@@ -40,6 +40,63 @@ var ServerConfig = &Server{
 	Port: 8080,
 }
 
+type StorageInterval struct {
+	Interval time.Duration
+}
+
+func (s *StorageInterval) String() string {
+	return s.Interval.String()
+}
+
+func (s *StorageInterval) Set(value string) error {
+	seconds, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	if seconds < 0 {
+		return errors.New("invalid store interval")
+	}
+	s.Interval = time.Duration(seconds) * time.Second
+	return nil
+}
+
+type StoragePath struct {
+	Path string
+}
+
+func (s *StoragePath) String() string {
+	return s.Path
+}
+
+func (s *StoragePath) Set(value string) error {
+	s.Path = value
+	return nil // todo validate
+}
+
+type StorageRestore bool
+
+func (s *StorageRestore) String() string {
+	if s == nil {
+		return "false"
+	}
+	return strconv.FormatBool(bool(*s))
+}
+
+func (s *StorageRestore) Set(value string) error {
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+	*s = StorageRestore(b)
+	return nil
+}
+
+type Storage struct {
+	Restore       StorageRestore
+	StoreInterval StorageInterval
+	StoragePath   StoragePath
+}
+
 type ClientInterval struct {
 	Interval time.Duration `json:"interval"`
 }
@@ -73,4 +130,8 @@ var ClientConfig = Client{
 	},
 	PollInterval:   &ClientInterval{2 * time.Second},
 	ReportInterval: &ClientInterval{10 * time.Second},
+}
+
+var StorageConfig = Storage{
+	StoreInterval: StorageInterval{300 * time.Second},
 }
