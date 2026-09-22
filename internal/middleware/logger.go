@@ -37,7 +37,6 @@ func (lw LoggableResponseWriter) Write(data []byte) (int, error) {
 
 // Log runs request and logs itself and returned response
 func Log(next http.Handler) http.Handler {
-
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		uri := r.URL.Path
