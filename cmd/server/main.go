@@ -20,7 +20,7 @@ import (
 
 type EnvConfig struct {
 	Address       string `env:"ADDRESS"`
-	StoreInterval int    `env:"STORE_INTERVAL"`
+	StoreInterval string `env:"STORE_INTERVAL"`
 	StoragePath   string `env:"FILE_STORAGE_PATH"`
 	Restore       bool   `env:"RESTORE"`
 }
@@ -128,9 +128,9 @@ func ParseEnv() error {
 			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoragePath", config.StorageConfig.StoragePath.String(), err)
 		}
 	}
-	if cfg.StoreInterval >= 0 {
-		if err := config.StorageConfig.StoragePath.Set(cfg.StoragePath); err != nil {
-			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoragePath", config.StorageConfig.StoragePath.String(), err)
+	if cfg.StoreInterval != "" {
+		if err := config.StorageConfig.StoreInterval.Set(cfg.StoreInterval); err != nil {
+			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoragePath", config.StorageConfig.StoreInterval.Interval.String(), err)
 		}
 	}
 	return nil
