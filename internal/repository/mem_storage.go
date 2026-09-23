@@ -146,7 +146,6 @@ func NewMemStorage(path *os.File, restore bool, autosaveInterval time.Duration) 
 		err := storage.Restore()
 		if err != nil {
 			fmt.Printf("error: %v\n", err)
-			return nil
 		}
 	}
 	return storage
