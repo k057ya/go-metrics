@@ -179,14 +179,14 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 	if err != nil {
 		tmp, tmpErr := os.CreateTemp("", "go-metrics-storage-*")
 		if tmpErr != nil {
-			return nil, fmt.Errorf("Cannot open storage: %v; cannot create temp file: %v\n",
+			return nil, fmt.Errorf("cannot open storage: %v; cannot create temp file: %v",
 				err, tmpErr)
 		}
 
 		tmpPath, err := filepath.Abs(tmp.Name())
 		if err != nil {
 			tmp.Close()
-			return nil, fmt.Errorf("Cannot get temp file path: %v\n", err)
+			return nil, fmt.Errorf("cannot get temp file path: %v", err)
 		}
 
 		fmt.Printf(
