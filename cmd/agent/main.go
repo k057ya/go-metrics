@@ -6,7 +6,7 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/caarlos0/env/v6"
+	"github.com/caarlos0/env/v11"
 	"github.com/k057ya/go-metrics/internal/agent"
 	"github.com/k057ya/go-metrics/internal/config"
 )

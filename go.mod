@@ -3,6 +3,7 @@ module github.com/k057ya/go-metrics
 go 1.26.5
 
 require (
+	github.com/caarlos0/env/v11 v11.4.1 // indirect
 	github.com/caarlos0/env/v6 v6.10.1 // indirect
 	github.com/go-chi/chi/v5 v5.3.2 // indirect
 	github.com/go-resty/resty/v2 v2.17.2 // indirect

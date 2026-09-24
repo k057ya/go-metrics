@@ -6,25 +6,30 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
 type MemStorage struct {
-	data             map[string]model.Metrics
-	path             *os.File
-	restore          bool
-	autosaveInterval time.Duration
-	lastSave         time.Time
-}
-
-func (storage *MemStorage) Exists(key string) bool {
-	_, exists := storage.data[key]
-	return exists
+	dataMu         sync.Mutex
+	data           map[string]model.Metrics
+	backupFilePath string
+	syncBackup     bool
+	backupMu       sync.Mutex
 }
 
 func (storage *MemStorage) List() []model.Metrics {
+	storage.dataMu.Lock()
+	defer storage.dataMu.Unlock()
+
+	return storage.list()
+}
+
+func (storage *MemStorage) list() []model.Metrics {
 	metrics := make([]model.Metrics, 0, len(storage.data))
 	for _, v := range storage.data {
 		metrics = append(metrics, v)
@@ -33,6 +38,13 @@ func (storage *MemStorage) List() []model.Metrics {
 }
 
 func (storage *MemStorage) Get(key string) (model.Metrics, error) {
+	storage.dataMu.Lock()
+	defer storage.dataMu.Unlock()
+
+	return storage.get(key)
+}
+
+func (storage *MemStorage) get(key string) (model.Metrics, error) {
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
@@ -41,20 +53,12 @@ func (storage *MemStorage) Get(key string) (model.Metrics, error) {
 	return metric, err
 }
 
-func (storage *MemStorage) store(metrics model.Metrics) (model.Metrics, error) {
-	storage.data[metrics.ID] = metrics
-	storage.Persist()
-	return storage.Get(metrics.ID)
-}
-
 func (storage *MemStorage) Update(key string, metrics model.Metrics) (model.Metrics, error) {
 
-	if storage.Exists(key) {
-		savedMetric, err := storage.Get(key)
+	storage.dataMu.Lock()
+	defer storage.dataMu.Unlock()
 
-		if err != nil {
-			return metrics, err
-		}
+	if savedMetric, err := storage.get(key); err == nil {
 
 		if savedMetric.MType != metrics.MType {
 			return metrics, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
@@ -72,50 +76,83 @@ func (storage *MemStorage) Update(key string, metrics model.Metrics) (model.Metr
 		}
 	}
 
-	return storage.store(metrics)
+	storage.data[metrics.ID] = metrics
+
+	// Backup data if sync backup is on
+	if storage.syncBackup {
+		err := storage.Backup(storage.list())
+		if err != nil {
+			return metrics, err
+		}
+	}
+	return metrics, nil
 }
 
 func (storage *MemStorage) Delete(key string) bool {
+	storage.dataMu.Lock()
 	delete(storage.data, key)
-	return !storage.Exists(key)
+	defer storage.dataMu.Unlock()
+	_, exists := storage.data[key]
+	return !exists
 }
 
 func (storage *MemStorage) Clear() bool {
+	storage.dataMu.Lock()
 	storage.data = make(map[string]model.Metrics)
+	defer storage.dataMu.Unlock()
 	return len(storage.data) == 0
 }
 
-func (storage *MemStorage) Persist() error {
-	if storage.lastSave.IsZero() || time.Since(storage.lastSave) >= storage.autosaveInterval {
-		list, err := json.Marshal(storage.List())
-		if err != nil {
-			return err
-		}
-		err = storage.path.Truncate(0)
-		if err != nil {
-			return err
-		}
-		_, err = storage.path.Seek(0, 0)
-		if err != nil {
-			return err
-		}
-		_, err = storage.path.Write(list)
-		if err != nil {
-			return err
-		}
-		storage.lastSave = time.Now()
+func (storage *MemStorage) Backup(data []model.Metrics) error {
+	storage.backupMu.Lock()
+	defer storage.backupMu.Unlock()
+	bak, err := storage.openBackupFile(os.O_RDWR | os.O_CREATE)
+	if err != nil {
+		return err
+	}
+	defer bak.Close()
+
+	list, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	err = bak.Truncate(0)
+	if err != nil {
+		return err
+	}
+	_, err = bak.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+	_, err = bak.Write(list)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 func (storage *MemStorage) Restore() error {
-	_, err := storage.path.Seek(0, 0)
+	storage.dataMu.Lock()
+	defer storage.dataMu.Unlock()
+	storage.backupMu.Lock()
+	defer storage.backupMu.Unlock()
+
+	bak, err := storage.openBackupFile(os.O_RDONLY | os.O_CREATE)
 	if err != nil {
 		return err
 	}
-	data, err := io.ReadAll(storage.path)
+	defer bak.Close()
+
+	if _, err := bak.Seek(0, 0); err != nil {
+		return err
+	}
+	data, err := io.ReadAll(bak)
 	if err != nil {
 		return err
+	}
+	// разрешить пустые файлы
+	if len(data) == 0 {
+		return nil
 	}
 
 	var metrics []model.Metrics
@@ -125,28 +162,71 @@ func (storage *MemStorage) Restore() error {
 	}
 
 	restored := make(map[string]model.Metrics, len(metrics))
-
 	for _, metric := range metrics {
 		restored[metric.ID] = metric
 	}
 
 	storage.data = restored
-
 	return nil
 }
 
-func NewMemStorage(path *os.File, restore bool, autosaveInterval time.Duration) *MemStorage {
+func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
+	var (
+		err  error
+		file *os.File
+	)
+	file, err = os.OpenFile(config.StorageConfig.BackupFilePath, mask, 0666)
+	if err != nil {
+		tmp, tmpErr := os.CreateTemp("", "go-metrics-storage-*")
+		if tmpErr != nil {
+			return nil, fmt.Errorf("Cannot open storage: %v; cannot create temp file: %v\n",
+				err, tmpErr)
+		}
+
+		tmpPath, err := filepath.Abs(tmp.Name())
+		if err != nil {
+			tmp.Close()
+			return nil, fmt.Errorf("Cannot get temp file path: %v\n", err)
+		}
+
+		fmt.Printf(
+			"Error opening storage file: %v. Falling back to temp file: %s\n",
+			err,
+			tmpPath,
+		)
+
+		// дальше работаем с временным файлом
+		file = tmp
+		storage.backupFilePath = tmpPath
+	}
+	return file, nil
+}
+
+func NewMemStorage(backupFilePath string, restore bool, backupInterval time.Duration) (*MemStorage, error) {
+
+	syncBackup := backupInterval == 0
+
 	storage := &MemStorage{
-		data:             make(map[string]model.Metrics),
-		path:             path,
-		restore:          restore,
-		autosaveInterval: autosaveInterval,
+		data:           make(map[string]model.Metrics),
+		backupFilePath: backupFilePath,
+		syncBackup:     syncBackup,
 	}
 	if restore {
 		err := storage.Restore()
 		if err != nil {
-			fmt.Printf("error: %v\n", err)
+			return nil, fmt.Errorf("restore storage: %w", err)
 		}
 	}
-	return storage
+
+	if !syncBackup {
+		go func() {
+			for {
+				time.Sleep(backupInterval)
+				data := storage.List()
+				storage.Backup(data)
+			}
+		}()
+	}
+
+	return storage, nil
 }
