@@ -40,6 +40,25 @@ var ServerConfig = &Server{
 	Port: 8080,
 }
 
+type Storage struct {
+	Restore        bool
+	BackupInterval time.Duration
+	BackupFilePath string
+}
+
+func (s *Storage) SetBackupInterval(value string) error {
+	seconds, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+
+	if seconds < 0 {
+		return errors.New("invalid backup interval")
+	}
+	s.BackupInterval = time.Duration(seconds) * time.Second
+	return nil
+}
+
 type ClientInterval struct {
 	Interval time.Duration `json:"interval"`
 }
@@ -73,4 +92,9 @@ var ClientConfig = Client{
 	},
 	PollInterval:   &ClientInterval{2 * time.Second},
 	ReportInterval: &ClientInterval{10 * time.Second},
+}
+
+var StorageConfig = Storage{
+	Restore:        false,
+	BackupInterval: 300 * time.Second,
 }
