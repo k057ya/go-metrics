@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -24,7 +26,16 @@ func jsonEncode(value any) string {
 
 func TestUpdateMetricsHandler(t *testing.T) {
 
-	storage := repository.NewMemStorage()
+	tmp, err := os.CreateTemp(t.TempDir(), "metrics-storage-*.json")
+	require.NoError(t, err)
+	tmpPath, err := filepath.Abs(tmp.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, tmp.Close())
+		require.NoError(t, os.Remove(tmpPath))
+	})
+
+	storage, _ := repository.NewMemStorage(tmpPath, false, 0)
 	router := chi.NewRouter()
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
 		UpdateMetricsHandler(w, r, storage)
@@ -43,6 +54,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		name        string
 		method      string
 		url         string
+		body        string
 		want        want
 		contentType string
 	}{
@@ -184,7 +196,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		{
 			name:        "#16 unsupported content type",
 			url:         "gauge/contentTypeGauge/1",
-			contentType: "application/json",
+			contentType: "application/xml",
 			want: want{
 				code:        http.StatusUnsupportedMediaType,
 				response:    "invalid content-type\n",
@@ -217,6 +229,10 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 
 			request := httpClient.R().SetBody("")
+
+			if test.body != "" {
+				request.SetBody(test.body)
+			}
 
 			method := test.method
 			if method == "" {
