@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
@@ -175,7 +174,7 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 		err  error
 		file *os.File
 	)
-	file, err = os.OpenFile(config.StorageConfig.BackupFilePath, mask, 0666)
+	file, err = os.OpenFile(storage.backupFilePath, mask, 0666)
 	if err != nil {
 		tmp, tmpErr := os.CreateTemp("", "go-metrics-storage-*")
 		if tmpErr != nil {

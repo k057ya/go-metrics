@@ -31,8 +31,8 @@ func main() {
 	}
 
 	// Prepare config
-	ParseFlags()
-	if err := ParseEnv(); err != nil {
+	parseFlags()
+	if err := parseEnv(); err != nil {
 		fmt.Printf("Unable to parse ENV-vars, falling back to flag values: %s\n", err)
 	}
 
@@ -65,7 +65,7 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 	// - chi middleware to strip trailing slash
 	// - gzip compression middleware
 	// - logger middleware for all routes
-	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
+	router.Use(chimiddleware.StripSlashes, middleware.Log, middleware.Compress)
 
 	listController := func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)
@@ -94,7 +94,7 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 	return router
 }
 
-func ParseEnv() error {
+func parseEnv() error {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -121,7 +121,7 @@ func ParseEnv() error {
 	return nil
 }
 
-func ParseFlags() {
+func parseFlags() {
 	flag.Var(config.ServerConfig, "a", "Server host and port")
 	flag.Func("i", "Backup interval in seconds, `0` for sync",
 		func(value string) error {

@@ -85,13 +85,18 @@ type Client struct {
 	ReportInterval *ClientInterval `json:"report_interval"`
 }
 
+var (
+	DefaultPollInterval   = &ClientInterval{2 * time.Second}
+	DefaultReportInterval = &ClientInterval{10 * time.Second}
+)
+
 var ClientConfig = Client{
 	Server: &Server{
 		Host: "localhost",
 		Port: 8080,
 	},
-	PollInterval:   &ClientInterval{2 * time.Second},
-	ReportInterval: &ClientInterval{10 * time.Second},
+	PollInterval:   DefaultPollInterval,
+	ReportInterval: DefaultReportInterval,
 }
 
 var StorageConfig = Storage{

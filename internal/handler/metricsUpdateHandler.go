@@ -15,7 +15,7 @@ type StorageWriter interface {
 
 func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage StorageWriter) {
 
-	var Metric model.Metrics
+	var metric model.Metrics
 
 	// Проверить метод запроса
 	if req.Method != http.MethodPost {
@@ -30,15 +30,15 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 		// Извлечь значения из сегментов URL
 		urlValue := chi.URLParam(req, "value")
 
-		Metric = model.Metrics{
+		metric = model.Metrics{
 			ID:    chi.URLParam(req, "metric"),
 			MType: chi.URLParam(req, "type"),
 		}
-		if err := Metric.ValidateType(); err != nil {
+		if err := metric.ValidateType(); err != nil {
 			http.Error(resp, err.Error(), http.StatusBadRequest)
 			return
 		}
-		err := Metric.Parse(urlValue)
+		err := metric.Parse(urlValue)
 		if err != nil {
 			http.Error(resp, "invalid metric value", http.StatusBadRequest)
 			return
@@ -53,7 +53,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 			return
 		}
 		// десериализуем JSON в Metric
-		if err = json.Unmarshal(buf.Bytes(), &Metric); err != nil {
+		if err = json.Unmarshal(buf.Bytes(), &metric); err != nil {
 			http.Error(resp, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -64,23 +64,23 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	}
 
 	// Проверить заполненность имени метрики
-	if Metric.ID == "" {
+	if metric.ID == "" {
 		http.Error(resp, "metric name is not specified", http.StatusBadRequest)
 		return
 	}
 
-	if err := Metric.ValidateType(); err != nil {
+	if err := metric.ValidateType(); err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := Metric.ValidateValue(); err != nil {
+	if err := metric.ValidateValue(); err != nil {
 		http.Error(resp, "invalid metric value", http.StatusBadRequest)
 		return
 	}
 
 	// Сохранить метрику в хранилище
-	savedMetric, err := storage.Update(Metric.ID, Metric)
+	savedMetric, err := storage.Update(metric.ID, metric)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return
