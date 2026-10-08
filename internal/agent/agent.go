@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
@@ -32,10 +35,24 @@ type HTTPClient struct {
 }
 
 // Короткий вызов со всеми настройками
-func (c *HTTPClient) Request(url string, body any) (*resty.Response, error) {
+func (c *HTTPClient) Request(url string, body []byte) (*resty.Response, error) {
+	var compressed bytes.Buffer
+	gzw := gzip.NewWriter(&compressed)
+	_, err := gzw.Write(body)
+	if err != nil {
+		fmt.Printf("%s", err)
+		return nil, err
+	}
+	err = gzw.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	return c.R().
-		SetBody(body).
+		SetBody(compressed.Bytes()).
 		SetHeader("Content-Type", "application/json").
+		SetHeader("Accept-Encoding", "gzip").
+		SetHeader("Content-Encoding", "gzip").
 		Post(url)
 }
 
@@ -50,16 +67,15 @@ func Run(agent Agent) error {
 
 	if agent.ReportInterval < agent.PollInterval {
 		fmt.Println("poll interval must be less than report interval, falling back to default values")
-		// TODO: remove hardcode before review
-		agent.ReportInterval = 10 * time.Second
-		agent.PollInterval = 2 * time.Second
+		agent.PollInterval = config.DefaultPollInterval.Interval
+		agent.ReportInterval = config.DefaultReportInterval.Interval
 	}
 
 	pollsPerReport := int(agent.ReportInterval / agent.PollInterval)
 
 	for {
 		var collected []Metric
-		for i := 0; i < pollsPerReport; i++ {
+		for range pollsPerReport {
 			time.Sleep(agent.PollInterval)
 			collected = agent.fetchMetrics()
 		}

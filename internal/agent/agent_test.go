@@ -1,27 +1,22 @@
 package agent
 
 import (
-	"encoding/json"
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/go-resty/resty/v2"
+	"github.com/k057ya/go-metrics/internal/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func jsonEncode(value any) string {
-	data, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return string(data)
-}
-
-// Это собрано с помощью AI, так как еще не достаточно разобрался в подмене
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -103,23 +98,29 @@ func TestFetchMetrics(t *testing.T) {
 
 func TestSendMetric(t *testing.T) {
 	type receivedRequest struct {
-		method      string
-		path        string
-		contentType string
+		method          string
+		path            string
+		contentType     string
+		contentEncoding string
+		acceptEncoding  string
+		body            []byte
 	}
 
 	tests := []struct {
 		name         string
 		metric       Metric
 		statusCode   int
+		gzip         bool
 		transportErr error
 		wantPath     string
 		wantErr      bool
+		wantReqBody  []byte
 	}{
 		{
 			name:       "#1 send gauge",
 			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.5"},
 			statusCode: http.StatusOK,
+			gzip:       true,
 		},
 		{
 			name:       "#2 send counter",
@@ -138,6 +139,18 @@ func TestSendMetric(t *testing.T) {
 			transportErr: errors.New("server is unavailable"),
 			wantErr:      true,
 		},
+		{
+			name:       "#5 gzip request",
+			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.54"},
+			statusCode: http.StatusOK,
+			gzip:       true,
+		},
+		{
+			name:        "#6 body",
+			metric:      Metric{ID: "Alloc", Type: "gauge", Value: "12.54"},
+			statusCode:  http.StatusOK,
+			wantReqBody: []byte(`{"id":"Alloc","type":"gauge","value":12.54}`),
+		},
 	}
 
 	for _, test := range tests {
@@ -148,10 +161,17 @@ func TestSendMetric(t *testing.T) {
 			client := NewHTTPClient("http://metrics.test")
 
 			client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+
+				body, err := io.ReadAll(request.Body)
+				require.NoError(t, err)
+
 				received = receivedRequest{
-					method:      request.Method,
-					path:        request.URL.Path,
-					contentType: request.Header.Get("Content-Type"),
+					method:          request.Method,
+					path:            request.URL.Path,
+					contentType:     request.Header.Get("Content-Type"),
+					contentEncoding: request.Header.Get("Content-Encoding"),
+					acceptEncoding:  request.Header.Get("Accept-Encoding"),
+					body:            body,
 				}
 
 				if test.transportErr != nil {
@@ -175,7 +195,66 @@ func TestSendMetric(t *testing.T) {
 			}
 
 			assert.Equal(t, http.MethodPost, received.method)
+
 			assert.Equal(t, "application/json", received.contentType)
+			assert.Equal(t, "gzip", received.acceptEncoding)
+			assert.Equal(t, "gzip", received.contentEncoding)
+
+			if len(test.wantReqBody) > 0 {
+				var compressed bytes.Buffer
+				gzw := gzip.NewWriter(&compressed)
+				_, err := gzw.Write(test.wantReqBody)
+				require.NoError(t, err)
+				err = gzw.Close()
+				require.NoError(t, err)
+
+				assert.Equal(t, compressed.Bytes(), received.body)
+			}
 		})
 	}
+}
+
+func TestSendMetricMalformedGzipBody(t *testing.T) {
+	client := NewHTTPClient("http://metrics.test")
+
+	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		body := "this is not gzip"
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Encoding": []string{"gzip"},
+			},
+			Body:          io.NopCloser(strings.NewReader(body)),
+			ContentLength: int64(len(body)),
+			Request:       request,
+		}, nil
+	}))
+
+	err := sendMetric(
+		Metric{ID: "Alloc", Type: "gauge", Value: "12.54"},
+		client,
+	)
+
+	require.ErrorIs(t, err, gzip.ErrHeader)
+}
+
+func TestRequestMalformedGzipBody(t *testing.T) {
+	server := httptest.NewServer(middleware.Compress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("malformed gzip reached handler")
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	t.Cleanup(server.Close)
+
+	client := NewHTTPClient(server.URL)
+
+	// Хук заменяющий body перед отправкой Request
+	client.OnBeforeRequest(func(_ *resty.Client, request *resty.Request) error {
+		request.SetBody([]byte("this is not gzip"))
+		return nil
+	})
+
+	response, err := client.Request("/update", []byte(`{"id":"Alloc","type":"gauge","value":12.54}`))
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Equal(t, http.StatusBadRequest, response.StatusCode())
 }
