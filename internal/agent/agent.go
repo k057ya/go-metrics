@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -9,11 +10,12 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/k057ya/go-metrics/internal/model"
 )
 
 func NewHTTPClient(baseURL string) HTTPClient {
 	return HTTPClient{resty.New().
-		SetHeader("Content-Type", "text/plain").
+		SetHeader("Content-Type", "application/json").
 		SetBaseURL(baseURL),
 	}
 }
@@ -29,10 +31,10 @@ type HTTPClient struct {
 }
 
 // Короткий вызов со всеми настройками
-func (c *HTTPClient) Request(url string) (*resty.Response, error) {
+func (c *HTTPClient) Request(url string, body any) (*resty.Response, error) {
 	return c.R().
-		SetBody("").
-		SetHeader("Content-Type", "text/plain").
+		SetBody(body).
+		SetHeader("Content-Type", "application/json").
 		Post(url)
 }
 
@@ -72,7 +74,19 @@ func Run(agent Agent) error {
 
 func sendMetric(metric Metric, client HTTPClient) error {
 
-	response, err := client.Request(`/update/` + metric.Type + `/` + metric.ID + `/` + metric.Value)
+	m := model.Metrics{
+		ID:    metric.ID,
+		MType: metric.Type,
+	}
+	err := m.Parse(metric.Value)
+	if err != nil {
+		return fmt.Errorf("cannot parse metric")
+	}
+	mjson, err := json.Marshal(m)
+	if err != nil {
+		return fmt.Errorf("error marshalling metric")
+	}
+	response, err := client.Request(`/update`, mjson)
 
 	if err != nil {
 		return err
