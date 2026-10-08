@@ -16,6 +16,7 @@ import (
 func NewHTTPClient(baseURL string) HTTPClient {
 	return HTTPClient{resty.New().
 		SetHeader("Content-Type", "application/json").
+		SetHeader("Accept-Encoding", "gzip").
 		SetBaseURL(baseURL),
 	}
 }

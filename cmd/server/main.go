@@ -44,10 +44,13 @@ func main() {
 	}
 
 	router := chi.NewRouter()
-	// Add chi middleware to stripslashes
-	router.Use(chimiddleware.StripSlashes)
-	// Add logger middleware for all routes
-	router.Use(middleware.Log)
+	// Add Middlewares:
+	// - chi middleware to strip trailing slash
+	// - gzip compression middleware
+	// - logger middleware for all routes
+	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
+
+	router.Use()
 	// List all metrics
 	router.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)
