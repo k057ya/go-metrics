@@ -52,7 +52,10 @@ func main() {
 	}
 
 	// Init DB connection
-	db, _ := sql.Open("psql", config.DatabaseConfig.Dsn)
+	db, err := sql.Open("postgres", config.DatabaseConfig.Dsn)
+	if err != nil {
+		fmt.Printf("Error setting up database connection: %v \n", err)
+	}
 
 	// Init router
 	router := newRouter(storage, db)
@@ -84,7 +87,7 @@ func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
 		handler.UpdateMetricsHandler(w, req, storage)
 	}
 
-	pingDbController := func(w http.ResponseWriter, req *http.Request) {
+	pingDBController := func(w http.ResponseWriter, req *http.Request) {
 		handler.PingDB(w, req, db)
 	}
 
@@ -104,7 +107,7 @@ func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
 	})
 
 	// Ping DB-connection
-	router.Get("/ping", pingDbController)
+	router.Get("/ping", pingDBController)
 
 	return router
 }
