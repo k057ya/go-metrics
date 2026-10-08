@@ -103,3 +103,18 @@ var StorageConfig = Storage{
 	Restore:        false,
 	BackupInterval: 300 * time.Second,
 }
+
+type Database struct {
+	Dsn string
+}
+
+func (d *Database) String() string {
+	return d.Dsn
+}
+
+func (d *Database) Set(value string) error {
+	d.Dsn = value
+	return nil
+}
+
+var DatabaseConfig = &Database{}
