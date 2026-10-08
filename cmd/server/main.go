@@ -1,10 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+
+	_ "github.com/lib/pq"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
@@ -21,6 +24,7 @@ type EnvConfig struct {
 	StoreInterval string `env:"STORE_INTERVAL"`
 	StoragePath   string `env:"FILE_STORAGE_PATH"`
 	Restore       bool   `env:"RESTORE"`
+	DatabaseDsn   string `env:"DATABASE_DSN"`
 }
 
 func main() {
@@ -47,8 +51,11 @@ func main() {
 		return
 	}
 
+	// Init DB connection
+	db, _ := sql.Open("psql", config.DatabaseConfig.Dsn)
+
 	// Init router
-	router := newRouter(storage)
+	router := newRouter(storage, db)
 
 	// Start server
 	fmt.Printf("Starting server on %s...", config.ServerConfig.String())
@@ -59,7 +66,7 @@ func main() {
 	}
 }
 
-func newRouter(storage *repository.MemStorage) *chi.Mux {
+func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
@@ -77,6 +84,10 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 		handler.UpdateMetricsHandler(w, req, storage)
 	}
 
+	pingDbController := func(w http.ResponseWriter, req *http.Request) {
+		handler.PingDB(w, req, db)
+	}
+
 	// List all metrics
 	router.Get("/", listController)
 
@@ -91,6 +102,10 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 		router.Post("/{type}/{metric}/{value}", updateController) // Plain
 		router.Post("/", updateController)                        // JSON
 	})
+
+	// Ping DB-connection
+	router.Get("/ping", pingDbController)
+
 	return router
 }
 
@@ -113,9 +128,13 @@ func parseEnv() error {
 		config.StorageConfig.BackupFilePath = cfg.StoragePath
 	}
 	if cfg.StoreInterval != "" {
-		err := config.StorageConfig.SetBackupInterval(cfg.StoreInterval)
-		if err != nil {
+		if err := config.StorageConfig.SetBackupInterval(cfg.StoreInterval); err != nil {
 			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoreInterval", config.StorageConfig.BackupInterval.String(), err)
+		}
+	}
+	if cfg.DatabaseDsn != "" {
+		if err := config.DatabaseConfig.Set(cfg.DatabaseDsn); err != nil {
+			fmt.Printf("cannot set %s from env. Error %s\n", "DatabaseDsn", err)
 		}
 	}
 	return nil
@@ -133,5 +152,6 @@ func parseFlags() {
 	)
 	flag.StringVar(&config.StorageConfig.BackupFilePath, "f", "", "Path of a storage file")
 	flag.BoolVar(&config.StorageConfig.Restore, "r", false, "`true` if need to restore at startup")
+	flag.StringVar(&config.DatabaseConfig.Dsn, "d", "", "Database connection DSN string")
 	flag.Parse()
 }
