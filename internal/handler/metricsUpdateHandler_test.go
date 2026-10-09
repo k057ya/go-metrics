@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		require.NoError(t, os.Remove(tmpPath))
 	})
 
-	storage, _ := repository.NewMemStorage(tmpPath, false, 0)
+	storage, _ := repository.NewMemStorage(context.Background(), tmpPath, false, 0)
 	router := chi.NewRouter()
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
 		UpdateMetricsHandler(w, r, storage)

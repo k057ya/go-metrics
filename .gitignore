@@ -25,3 +25,5 @@ vendor/
 # IDEs directories
 .idea
 .vscode
+/postgres_data/
+/docker-compose.yml

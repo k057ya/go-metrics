@@ -5,14 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/repository"
 )
 
-type StorageLister interface {
-	List() []model.Metrics
-}
-
-func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage StorageLister) {
+func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister) {
 
 	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
 	resp.WriteHeader(http.StatusOK)
@@ -20,11 +16,13 @@ func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage Storage
 	var html strings.Builder
 	html.WriteString("<h1>Metrics List</h1><ul>\n")
 
-	if len(storage.List()) == 0 {
+	metrics := storage.List(req.Context())
+
+	if len(metrics) == 0 {
 		html.WriteString("<li><em>Storage is empty.</em></li>")
 	}
 
-	for _, metric := range storage.List() {
+	for _, metric := range metrics {
 
 		html.WriteString(fmt.Sprintf(
 			`<li><a href="%s"><b>%s</b></a>: <pre>%s</pre></li>`,

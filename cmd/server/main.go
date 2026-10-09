@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+
+	_ "github.com/lib/pq"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
@@ -21,6 +24,7 @@ type EnvConfig struct {
 	StoreInterval string `env:"STORE_INTERVAL"`
 	StoragePath   string `env:"FILE_STORAGE_PATH"`
 	Restore       bool   `env:"RESTORE"`
+	DatabaseDsn   string `env:"DATABASE_DSN"`
 }
 
 func main() {
@@ -37,13 +41,9 @@ func main() {
 	}
 
 	// Init storage
-	storage, err := repository.NewMemStorage(
-		config.StorageConfig.BackupFilePath,
-		config.StorageConfig.Restore,
-		config.StorageConfig.BackupInterval,
-	)
+	storage, err := getStorage()
 	if err != nil {
-		fmt.Printf("Unable to initialize storage: %v \n", err)
+		fmt.Printf("Error while initializing storage: `%s`\n", err)
 		return
 	}
 
@@ -59,13 +59,13 @@ func main() {
 	}
 }
 
-func newRouter(storage *repository.MemStorage) *chi.Mux {
+func newRouter(storage repository.Storage) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
 	// - gzip compression middleware
 	// - logger middleware for all routes
-	router.Use(chimiddleware.StripSlashes, middleware.Log, middleware.Compress)
+	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
 
 	listController := func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)
@@ -75,6 +75,10 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 	}
 	updateController := func(w http.ResponseWriter, req *http.Request) {
 		handler.UpdateMetricsHandler(w, req, storage)
+	}
+
+	pingDBController := func(w http.ResponseWriter, req *http.Request) {
+		handler.PingDB(w, req, storage)
 	}
 
 	// List all metrics
@@ -91,7 +95,36 @@ func newRouter(storage *repository.MemStorage) *chi.Mux {
 		router.Post("/{type}/{metric}/{value}", updateController) // Plain
 		router.Post("/", updateController)                        // JSON
 	})
+
+	// Ping DB-connection
+	router.Get("/ping", pingDBController)
+
 	return router
+}
+
+func getStorage() (repository.Storage, error) {
+
+	var storage repository.Storage
+
+	// Init DB connection
+	storage, err := repository.NewDBStorage(config.DatabaseConfig.Dsn)
+	if err != nil {
+		fmt.Printf("Error setting up database connection: %v \n", err)
+
+		storage, err = repository.NewMemStorage(
+			context.Background(),
+			config.StorageConfig.BackupFilePath,
+			config.StorageConfig.Restore,
+			config.StorageConfig.BackupInterval,
+		)
+		if err != nil {
+			fmt.Printf("Unable to initialize mem/file storage: %v \n", err)
+			return nil, err
+		}
+
+	}
+
+	return storage, nil
 }
 
 func parseEnv() error {
@@ -113,9 +146,13 @@ func parseEnv() error {
 		config.StorageConfig.BackupFilePath = cfg.StoragePath
 	}
 	if cfg.StoreInterval != "" {
-		err := config.StorageConfig.SetBackupInterval(cfg.StoreInterval)
-		if err != nil {
+		if err := config.StorageConfig.SetBackupInterval(cfg.StoreInterval); err != nil {
 			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoreInterval", config.StorageConfig.BackupInterval.String(), err)
+		}
+	}
+	if cfg.DatabaseDsn != "" {
+		if err := config.DatabaseConfig.Set(cfg.DatabaseDsn); err != nil {
+			fmt.Printf("cannot set %s from env. Error %s\n", "DatabaseDsn", err)
 		}
 	}
 	return nil
@@ -133,5 +170,6 @@ func parseFlags() {
 	)
 	flag.StringVar(&config.StorageConfig.BackupFilePath, "f", "", "Path of a storage file")
 	flag.BoolVar(&config.StorageConfig.Restore, "r", false, "`true` if need to restore at startup")
+	flag.StringVar(&config.DatabaseConfig.Dsn, "d", "", "Database connection DSN string")
 	flag.Parse()
 }
