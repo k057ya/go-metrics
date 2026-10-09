@@ -135,6 +135,9 @@ func (storage *DBStorage) Close() error {
 
 func (storage *DBStorage) Migrate(db *sql.DB) {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://migrations",
 		"postgres",
@@ -143,7 +146,7 @@ func (storage *DBStorage) Migrate(db *sql.DB) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := m.Up(); err != nil && !errors.Is(migrate.ErrNoChange, err) {
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		log.Fatal("migrate err:", err)
 	}
 }
