@@ -7,13 +7,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/repository"
 )
 
-type StorageWriter interface {
-	Update(key string, metrics model.Metrics) (model.Metrics, error)
-}
-
-func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage StorageWriter) {
+func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageWriter) {
 
 	var metric model.Metrics
 
@@ -80,7 +77,7 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage S
 	}
 
 	// Сохранить метрику в хранилище
-	savedMetric, err := storage.Update(metric.ID, metric)
+	savedMetric, err := storage.Update(req.Context(), metric.ID, metric)
 	if err != nil {
 		http.Error(resp, err.Error(), http.StatusBadRequest)
 		return

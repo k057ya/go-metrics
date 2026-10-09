@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -41,24 +41,14 @@ func main() {
 	}
 
 	// Init storage
-	storage, err := repository.NewMemStorage(
-		config.StorageConfig.BackupFilePath,
-		config.StorageConfig.Restore,
-		config.StorageConfig.BackupInterval,
-	)
+	storage, err := getStorage()
 	if err != nil {
-		fmt.Printf("Unable to initialize storage: %v \n", err)
+		fmt.Printf("Error while initializing storage: `%s`\n", err)
 		return
 	}
 
-	// Init DB connection
-	db, err := sql.Open("postgres", config.DatabaseConfig.Dsn)
-	if err != nil {
-		fmt.Printf("Error setting up database connection: %v \n", err)
-	}
-
 	// Init router
-	router := newRouter(storage, db)
+	router := newRouter(storage)
 
 	// Start server
 	fmt.Printf("Starting server on %s...", config.ServerConfig.String())
@@ -69,13 +59,13 @@ func main() {
 	}
 }
 
-func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
+func newRouter(storage repository.Storage) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
 	// - gzip compression middleware
 	// - logger middleware for all routes
-	router.Use(chimiddleware.StripSlashes, middleware.Log, middleware.Compress)
+	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
 
 	listController := func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)
@@ -88,7 +78,7 @@ func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
 	}
 
 	pingDBController := func(w http.ResponseWriter, req *http.Request) {
-		handler.PingDB(w, req, db)
+		handler.PingDB(w, req, storage)
 	}
 
 	// List all metrics
@@ -110,6 +100,31 @@ func newRouter(storage *repository.MemStorage, db *sql.DB) *chi.Mux {
 	router.Get("/ping", pingDBController)
 
 	return router
+}
+
+func getStorage() (repository.Storage, error) {
+
+	var storage repository.Storage
+
+	// Init DB connection
+	storage, err := repository.NewDbStorage(config.DatabaseConfig.Dsn)
+	if err != nil {
+		fmt.Printf("Error setting up database connection: %v \n", err)
+
+		storage, err = repository.NewMemStorage(
+			context.Background(),
+			config.StorageConfig.BackupFilePath,
+			config.StorageConfig.Restore,
+			config.StorageConfig.BackupInterval,
+		)
+		if err != nil {
+			fmt.Printf("Unable to initialize mem/file storage: %v \n", err)
+			return nil, err
+		}
+
+	}
+
+	return storage, nil
 }
 
 func parseEnv() error {

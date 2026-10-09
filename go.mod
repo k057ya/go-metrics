@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/golang-migrate/migrate/v4 v4.20.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.59.0 // indirect
