@@ -5,8 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
@@ -30,6 +34,10 @@ func (storage *DBStorage) list(ctx context.Context) []model.Metrics {
 		fmt.Printf("error getting metrics from database: %v", err)
 	}
 	defer rows.Close()
+
+	if rows.Err() != nil {
+		fmt.Printf("error getting metrics from database: %v", err)
+	}
 
 	for rows.Next() {
 		var m model.Metrics
@@ -121,16 +129,37 @@ func (storage *DBStorage) Ping(ctx context.Context) error {
 	return storage.connection.PingContext(ctx)
 }
 
-func NewDbStorage(dsn string) (*DBStorage, error) {
+func (storage *DBStorage) Close() error {
+	return storage.connection.Close()
+}
+
+func (storage *DBStorage) Migrate(db *sql.DB) {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://migrations",
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := m.Up(); err != nil && !errors.Is(migrate.ErrNoChange, err) {
+		log.Fatal("migrate err:", err)
+	}
+}
+
+func NewDBStorage(dsn string) (*DBStorage, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	var storage = &DBStorage{
 		connection: db,
 	}
+	storage.Migrate(db)
 	return storage, nil
 }

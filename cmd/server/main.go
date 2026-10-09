@@ -107,7 +107,7 @@ func getStorage() (repository.Storage, error) {
 	var storage repository.Storage
 
 	// Init DB connection
-	storage, err := repository.NewDbStorage(config.DatabaseConfig.Dsn)
+	storage, err := repository.NewDBStorage(config.DatabaseConfig.Dsn)
 	if err != nil {
 		fmt.Printf("Error setting up database connection: %v \n", err)
 

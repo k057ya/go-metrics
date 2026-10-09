@@ -24,6 +24,6 @@ type StorageLister interface {
 	List(ctx context.Context) []model.Metrics
 }
 
-type StorageDbPinger interface {
+type StorageDBPinger interface {
 	PingDB()
 }
