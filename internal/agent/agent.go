@@ -123,7 +123,7 @@ func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
 		}
 		err := metric.Parse(m.Value)
 		if err != nil {
-			fmt.Printf("cannot parse metric: %s %w", m.ID, err)
+			fmt.Printf("cannot parse metric: %s %s", m.ID, err)
 			continue
 		}
 		metrics = append(metrics, metric)
