@@ -141,7 +141,7 @@ func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics
 			"VALUES ($1, $2, $3, $4, NOW()) "+
 			"ON CONFLICT(id) "+
 			"DO UPDATE SET "+
-			"\"delta\" = EXCLUDED.delta, "+
+			"\"delta\" = COALESCE(metrics.delta, 0) + EXCLUDED.delta, "+
 			"\"value\" = EXCLUDED.value, "+
 			"\"updated_at\" = EXCLUDED.updated_at",
 	)
