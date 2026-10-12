@@ -125,6 +125,51 @@ func (storage *DBStorage) Update(ctx context.Context, key string, m model.Metric
 	return m, nil
 }
 
+func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics) (int64, error) {
+	storage.dataMu.Lock()
+	defer storage.dataMu.Unlock()
+
+	var affected int64
+
+	tx, err := storage.connection.BeginTx(ctx, nil)
+	if err != nil {
+		return affected, err
+	}
+	stmt, err := tx.PrepareContext(
+		ctx,
+		"INSERT INTO metrics (id, type, delta, value, updated_at) "+
+			"VALUES ($1, $2, $3, $4, NOW()) "+
+			"ON CONFLICT(id) "+
+			"DO UPDATE SET "+
+			"delta = EXCLUDED.delta, "+
+			"value = EXCLUDED.value, "+
+			"updated_at = EXCLUDED.updated_at",
+	)
+	if err != nil {
+		return affected, err
+	}
+	defer stmt.Close()
+
+	for _, m := range mlist {
+		res, err := stmt.ExecContext(ctx, m.ID, m.MType, m.Delta, m.Value)
+		if err != nil {
+			continue
+		}
+		a, err := res.RowsAffected()
+		if err != nil {
+			continue
+		}
+		affected += a
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return 0, err
+	}
+
+	return affected, nil
+}
+
 func (storage *DBStorage) Ping(ctx context.Context) error {
 	return storage.connection.PingContext(ctx)
 }

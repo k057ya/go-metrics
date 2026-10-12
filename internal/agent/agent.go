@@ -80,11 +80,9 @@ func Run(agent Agent) error {
 			collected = agent.fetchMetrics()
 		}
 
-		for _, metric := range collected {
-			if err := sendMetric(metric, agent.Client); err != nil {
-				// TODO
-				continue
-			}
+		if _, err := sendBatch(collected, agent.Client); err != nil {
+			// TODO
+			continue
 		}
 	}
 }
@@ -115,6 +113,39 @@ func sendMetric(metric Metric, client HTTPClient) error {
 
 	return nil
 }
+
+func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
+	var metrics []model.Metrics
+	for _, m := range mlist {
+		metric := model.Metrics{
+			ID:    m.ID,
+			MType: m.Type,
+		}
+		err := metric.Parse(m.Value)
+		if err != nil {
+			fmt.Printf("cannot parse metric: %s %w", m.ID, err)
+			continue
+		}
+		metrics = append(metrics, metric)
+	}
+	mjson, err := json.Marshal(metrics)
+	if err != nil {
+		fmt.Printf("error marshalling metric list")
+		return 0, err
+	}
+	response, err := client.Request(`/updates`, mjson)
+
+	if err != nil {
+		return 0, err
+	}
+
+	if response.StatusCode() < http.StatusOK || response.StatusCode() >= http.StatusMultipleChoices {
+		return 0, fmt.Errorf("server returned status: %s", response.Status())
+	}
+
+	return int64(len(metrics)), nil
+}
+
 func (a Agent) fetchMetrics() []Metric {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)

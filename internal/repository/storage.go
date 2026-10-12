@@ -18,6 +18,7 @@ type StorageReader interface {
 
 type StorageWriter interface {
 	Update(ctx context.Context, key string, metrics model.Metrics) (model.Metrics, error)
+	BatchUpdate(ctx context.Context, mlist []model.Metrics) (int64, error)
 }
 
 type StorageLister interface {
