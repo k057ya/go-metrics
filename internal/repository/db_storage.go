@@ -63,12 +63,12 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 
 	row := storage.connection.QueryRowContext(
 		ctx,
-		"SELECT `id`, `type`, `delta`, `value` from `metrics` WHERE `id`=$1 LIMIT 1",
+		"SELECT \"id\", \"type\", \"delta\", \"value\" from metrics WHERE \"id\"=$1 LIMIT 1",
 		key,
 	)
 	var m model.Metrics
 
-	err := row.Scan(&m.ID, m.MType, &m.Delta, &m.Value)
+	err := row.Scan(&m.ID, &m.MType, &m.Delta, &m.Value)
 	if err != nil {
 		return model.Metrics{}, err
 	}
@@ -137,13 +137,13 @@ func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics
 	}
 	stmt, err := tx.PrepareContext(
 		ctx,
-		"INSERT INTO metrics (id, type, delta, value, updated_at) "+
+		"INSERT INTO metrics (\"id\", \"type\", \"delta\", \"value\", \"updated_at\") "+
 			"VALUES ($1, $2, $3, $4, NOW()) "+
 			"ON CONFLICT(id) "+
 			"DO UPDATE SET "+
-			"delta = EXCLUDED.delta, "+
-			"value = EXCLUDED.value, "+
-			"updated_at = EXCLUDED.updated_at",
+			"\"delta\" = EXCLUDED.delta, "+
+			"\"value\" = EXCLUDED.value, "+
+			"\"updated_at\" = EXCLUDED.updated_at",
 	)
 	if err != nil {
 		return affected, err
