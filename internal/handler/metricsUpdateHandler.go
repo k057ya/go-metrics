@@ -31,13 +31,14 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 			ID:    chi.URLParam(req, "metric"),
 			MType: chi.URLParam(req, "type"),
 		}
-		if err := metric.ValidateType(); err != nil {
+
+		err := metric.Parse(urlValue)
+		if err != nil {
 			http.Error(resp, err.Error(), http.StatusBadRequest)
 			return
 		}
-		err := metric.Parse(urlValue)
-		if err != nil {
-			http.Error(resp, "invalid metric value", http.StatusBadRequest)
+		if err := metric.Validate(); err != nil {
+			http.Error(resp, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -57,22 +58,6 @@ func UpdateMetricsHandler(resp http.ResponseWriter, req *http.Request, storage r
 
 	default:
 		http.Error(resp, "invalid content-type", http.StatusUnsupportedMediaType)
-		return
-	}
-
-	// Проверить заполненность имени метрики
-	if metric.ID == "" {
-		http.Error(resp, "metric name is not specified", http.StatusBadRequest)
-		return
-	}
-
-	if err := metric.ValidateType(); err != nil {
-		http.Error(resp, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := metric.ValidateValue(); err != nil {
-		http.Error(resp, "invalid metric value", http.StatusBadRequest)
 		return
 	}
 

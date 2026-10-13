@@ -128,6 +128,11 @@ func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
 		}
 		metrics = append(metrics, metric)
 	}
+
+	if len(metrics) == 0 {
+		return 0, nil
+	}
+
 	mjson, err := json.Marshal(metrics)
 	if err != nil {
 		fmt.Printf("error marshalling metric list")

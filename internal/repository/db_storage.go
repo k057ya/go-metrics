@@ -29,7 +29,7 @@ func (storage *DBStorage) List(ctx context.Context) []model.Metrics {
 func (storage *DBStorage) list(ctx context.Context) []model.Metrics {
 	var metrics []model.Metrics
 
-	rows, err := storage.connection.QueryContext(ctx, "SELECT `id`, `type`, `delta`, `value` from `metrics`")
+	rows, err := storage.connection.QueryContext(ctx, "SELECT id, \"type\", delta, \"value\" FROM metrics")
 	if err != nil {
 		fmt.Printf("error getting metrics from database: %v", err)
 	}
@@ -41,9 +41,10 @@ func (storage *DBStorage) list(ctx context.Context) []model.Metrics {
 
 	for rows.Next() {
 		var m model.Metrics
-		err = rows.Scan(&m.ID, m.MType, &m.Delta, &m.Value)
+		err = rows.Scan(&m.ID, &m.MType, &m.Delta, &m.Value)
 		if err != nil {
 			fmt.Printf("error scanning metric row: %v", err)
+			continue
 		}
 
 		metrics = append(metrics, m)
@@ -63,7 +64,7 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 
 	row := storage.connection.QueryRowContext(
 		ctx,
-		"SELECT \"id\", \"type\", \"delta\", \"value\" from metrics WHERE \"id\"=$1 LIMIT 1",
+		"SELECT id, \"type\", delta, value from metrics WHERE id=$1 LIMIT 1",
 		key,
 	)
 	var m model.Metrics
@@ -76,98 +77,97 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 	return m, err
 }
 
-func (storage *DBStorage) Update(ctx context.Context, key string, m model.Metrics) (model.Metrics, error) {
-
+func (storage *DBStorage) Update(ctx context.Context, _ string, m model.Metrics) (model.Metrics, error) {
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	if savedMetric, err := storage.get(ctx, key); err == nil {
-
-		if savedMetric.MType != m.MType {
-			return m, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
-		}
-
-		switch m.MType {
-		case model.MetricsTypeCounter:
-			if m.Delta == nil || savedMetric.Delta == nil {
-				return m, errors.New("counter delta is not specified")
-			}
-
-			delta := *m.Delta + *savedMetric.Delta
-			m.Delta = &delta
-		default:
-		}
-	}
-
-	result, err := storage.connection.ExecContext(
-		ctx,
-		"INSERT INTO metrics (id, type, delta, value) "+
-			"VALUES ($1, $2, $3, $4) "+
-			"ON CONFLICT(id) "+
-			"DO UPDATE SET "+
-			"delta = EXCLUDED.delta, "+
-			"value = EXCLUDED.value",
-		m.ID,
-		m.MType,
-		m.Delta,
-		m.Value,
+	var (
+		updated   model.Metrics
+		validated []model.Metrics
 	)
-	if err != nil {
-		return m, err
+	if err := m.Validate(); err != nil {
+		return updated, err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return m, err
+	validated = append(validated, m)
+
+	upserted, err := storage.upsert(ctx, validated)
+	if err != nil || len(upserted) != 1 {
+		return updated, err
 	}
-	if affected == 0 {
-		return m, errors.New("error saving metrics")
-	}
-	return m, nil
+
+	updated = upserted[0]
+	return updated, nil
 }
 
-func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics) (int64, error) {
+func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error) {
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	var affected int64
+	var validated []model.Metrics
+
+	for _, m := range mlist {
+		if err := m.Validate(); err != nil {
+			continue
+		}
+		validated = append(validated, m)
+	}
+
+	return storage.upsert(ctx, validated)
+}
+
+func (storage *DBStorage) upsert(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error) {
+
+	var updated []model.Metrics
 
 	tx, err := storage.connection.BeginTx(ctx, nil)
 	if err != nil {
-		return affected, err
+		return nil, err
 	}
+	defer tx.Rollback()
+
 	stmt, err := tx.PrepareContext(
 		ctx,
-		"INSERT INTO metrics (\"id\", \"type\", \"delta\", \"value\", \"updated_at\") "+
+		"INSERT INTO metrics (id, \"type\", delta, \"value\", updated_at) "+
 			"VALUES ($1, $2, $3, $4, NOW()) "+
 			"ON CONFLICT(id) "+
 			"DO UPDATE SET "+
-			"\"delta\" = COALESCE(metrics.delta, 0) + EXCLUDED.delta, "+
-			"\"value\" = EXCLUDED.value, "+
-			"\"updated_at\" = EXCLUDED.updated_at",
+			"delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta, "+
+			"value = EXCLUDED.value, "+
+			"updated_at = EXCLUDED.updated_at "+
+			"WHERE metrics.type = EXCLUDED.type "+
+			"RETURNING id, type, delta, value",
 	)
 	if err != nil {
-		return affected, err
+		return nil, err
 	}
 	defer stmt.Close()
 
 	for _, m := range mlist {
-		res, err := stmt.ExecContext(ctx, m.ID, m.MType, m.Delta, m.Value)
-		if err != nil {
-			continue
+
+		var metric model.Metrics
+
+		err := stmt.
+			QueryRowContext(ctx, m.ID, m.MType, m.Delta, m.Value).
+			Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
+
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf(
+				"metric %q: type change is not supported", m.ID,
+			)
 		}
-		a, err := res.RowsAffected()
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("upsert error: %q %w", m.ID, err)
 		}
-		affected += a
+
+		updated = append(updated, metric)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return affected, nil
+	return updated, nil
 }
 
 func (storage *DBStorage) Ping(ctx context.Context) error {
