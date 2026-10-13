@@ -9,14 +9,17 @@ import (
 )
 
 func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister) {
+	metrics, err := storage.List(req.Context())
+	if err != nil {
+		http.Error(resp, "cannot list metrics", http.StatusInternalServerError)
+		return
+	}
 
 	resp.Header().Set("Content-Type", "text/html; charset=utf-8")
 	resp.WriteHeader(http.StatusOK)
 
 	var html strings.Builder
 	html.WriteString("<h1>Metrics List</h1><ul>\n")
-
-	metrics := storage.List(req.Context())
 
 	if len(metrics) == 0 {
 		html.WriteString("<li><em>Storage is empty.</em></li>")

@@ -22,7 +22,7 @@ type StorageWriter interface {
 }
 
 type StorageLister interface {
-	List(ctx context.Context) []model.Metrics
+	List(ctx context.Context) ([]model.Metrics, error)
 }
 
 type StorageDBPinger interface {

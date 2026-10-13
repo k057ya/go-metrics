@@ -22,11 +22,11 @@ type MemStorage struct {
 	backupMu       sync.Mutex
 }
 
-func (storage *MemStorage) List(ctx context.Context) []model.Metrics {
+func (storage *MemStorage) List(ctx context.Context) ([]model.Metrics, error) {
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	return storage.list(ctx)
+	return storage.list(ctx), nil
 }
 
 func (storage *MemStorage) list(_ context.Context) []model.Metrics {
@@ -237,7 +237,10 @@ func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, bac
 		go func() {
 			for {
 				time.Sleep(backupInterval)
-				data := storage.List(ctx)
+				data, err := storage.List(ctx)
+				if err != nil {
+					continue
+				}
 				storage.Backup(data)
 			}
 		}()
