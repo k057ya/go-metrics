@@ -31,7 +31,12 @@ func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		signFn := func(w http.ResponseWriter, r *http.Request) {
 
-			if signatureKey != "" && r.Header.Get("HashSHA256") != "" {
+			if signatureKey == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if signature := r.Header.Get("HashSHA256"); signature != "" {
 				//
 				// проверить подпись запроса
 				//
@@ -43,7 +48,7 @@ func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
 				// Восстанавливаем поток, чтобы обработчик тоже мог прочитать тело.
 				r.Body = io.NopCloser(bytes.NewReader(body))
 
-				hash, err := hex.DecodeString(r.Header.Get("HashSHA256"))
+				hash, err := hex.DecodeString(signature)
 				if err != nil || !service.CheckSignature(body, signatureKey, hash) {
 					http.Error(w, "invalid signature", http.StatusBadRequest)
 					return
