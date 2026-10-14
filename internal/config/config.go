@@ -98,6 +98,7 @@ var ClientConfig = Client{
 	},
 	PollInterval:   DefaultPollInterval,
 	ReportInterval: DefaultReportInterval,
+	Signature:      SignatureConfig,
 }
 
 var StorageConfig = Storage{
@@ -122,10 +123,6 @@ var DatabaseConfig = &Database{}
 
 type Signature struct {
 	Key string
-}
-
-func (sc *Signature) ShouldSignRequests() bool {
-	return sc.Key != ""
 }
 
 var SignatureConfig = &Signature{}

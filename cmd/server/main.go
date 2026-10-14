@@ -48,7 +48,7 @@ func main() {
 	}
 
 	// Init router
-	router := newRouter(storage, config.SignatureConfig.ShouldSignRequests())
+	router := newRouter(storage, true, config.SignatureConfig.Key)
 
 	// Start server
 	fmt.Printf("Starting server on %s...", config.ServerConfig.String())
@@ -59,17 +59,23 @@ func main() {
 	}
 }
 
-func newRouter(storage repository.Storage, sign bool) *chi.Mux {
+func newRouter(storage repository.Storage, gzip bool, signatureKey string) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
+	router.Use(chimiddleware.StripSlashes)
+
 	// - gzip compression middleware
-	// - logger middleware for all routes
-	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
-	// If key provided - require and validate signature header, sign responses
-	if sign == true {
-		router.Use(middleware.CheckAndSign)
+	if gzip {
+		router.Use(middleware.Compress)
 	}
+	// If key provided - require and validate signature header, sign responses
+	if signatureKey != "" {
+		router.Use(middleware.CheckAndSign(signatureKey))
+	}
+
+	// - logger middleware for all routes
+	router.Use(middleware.Log)
 
 	listController := func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)

@@ -33,7 +33,11 @@ func main() {
 	)
 
 	var a = agent.Agent{
-		Client:         agent.NewHTTPClient(config.ClientConfig.Server.Address()),
+		Client: agent.NewHTTPClient(
+			config.ClientConfig.Server.Address(),
+			true,
+			config.ClientConfig.Signature.Key,
+		),
 		PollInterval:   config.ClientConfig.PollInterval.Interval,
 		ReportInterval: config.ClientConfig.ReportInterval.Interval,
 	}
