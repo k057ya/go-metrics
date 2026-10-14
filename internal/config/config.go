@@ -83,6 +83,7 @@ type Client struct {
 	Server         *Server         `json:"server"`
 	PollInterval   *ClientInterval `json:"poll_interval"`
 	ReportInterval *ClientInterval `json:"report_interval"`
+	Signature      *Signature
 }
 
 var (
@@ -118,3 +119,13 @@ func (d *Database) Set(value string) error {
 }
 
 var DatabaseConfig = &Database{}
+
+type Signature struct {
+	Key string
+}
+
+func (sc *Signature) ShouldSignRequests() bool {
+	return sc.Key != ""
+}
+
+var SignatureConfig = &Signature{}

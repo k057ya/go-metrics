@@ -7,11 +7,10 @@ import (
 	"log"
 	"net/http"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/handler"
 	"github.com/k057ya/go-metrics/internal/logger"
@@ -25,6 +24,7 @@ type EnvConfig struct {
 	StoragePath   string `env:"FILE_STORAGE_PATH"`
 	Restore       bool   `env:"RESTORE"`
 	DatabaseDsn   string `env:"DATABASE_DSN"`
+	SignatureKey  string `env:"KEY"`
 }
 
 func main() {
@@ -48,7 +48,7 @@ func main() {
 	}
 
 	// Init router
-	router := newRouter(storage)
+	router := newRouter(storage, config.SignatureConfig.ShouldSignRequests())
 
 	// Start server
 	fmt.Printf("Starting server on %s...", config.ServerConfig.String())
@@ -59,13 +59,17 @@ func main() {
 	}
 }
 
-func newRouter(storage repository.Storage) *chi.Mux {
+func newRouter(storage repository.Storage, sign bool) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
 	// - gzip compression middleware
 	// - logger middleware for all routes
 	router.Use(chimiddleware.StripSlashes, middleware.Compress, middleware.Log)
+	// If key provided - require and validate signature header, sign responses
+	if sign == true {
+		router.Use(middleware.CheckAndSign)
+	}
 
 	listController := func(w http.ResponseWriter, req *http.Request) {
 		handler.ListAllMetrics(w, req, storage)
@@ -161,6 +165,9 @@ func parseEnv() error {
 			fmt.Printf("cannot set %s from env. Error %s\n", "DatabaseDsn", err)
 		}
 	}
+	if cfg.SignatureKey != "" {
+		config.SignatureConfig.Key = cfg.SignatureKey
+	}
 	return nil
 }
 
@@ -177,5 +184,6 @@ func parseFlags() {
 	flag.StringVar(&config.StorageConfig.BackupFilePath, "f", "", "Path of a storage file")
 	flag.BoolVar(&config.StorageConfig.Restore, "r", false, "`true` if need to restore at startup")
 	flag.StringVar(&config.DatabaseConfig.Dsn, "d", "", "Database connection DSN string")
+	flag.StringVar(&config.SignatureConfig.Key, "k", "", "Key for signing requests")
 	flag.Parse()
 }

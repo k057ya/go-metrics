@@ -16,6 +16,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/service"
 )
 
 func NewHTTPClient(baseURL string) HTTPClient {
@@ -65,6 +66,7 @@ func (c *HTTPClient) RequestContext(ctx context.Context, url string, body []byte
 				SetHeader("Content-Type", "application/json").
 				SetHeader("Accept-Encoding", "gzip").
 				SetHeader("Content-Encoding", "gzip").
+				SetHeader("HashSHA256", service.GenSignature(body, "KEY")).
 				Post(url)
 			return requestError
 		},
