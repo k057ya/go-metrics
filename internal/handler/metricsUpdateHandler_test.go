@@ -44,7 +44,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	var httpClient = agent.NewHTTPClient(server.URL + "/update/")
+	var httpClient = agent.NewHTTPClient(server.URL+"/update/", true, "")
 
 	type want struct {
 		code        int
