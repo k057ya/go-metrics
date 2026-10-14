@@ -229,11 +229,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 
-			request := httpClient.R().SetBody("")
-
-			if test.body != "" {
-				request.SetBody(test.body)
-			}
+			request := httpClient.R().SetBody([]byte(test.body))
 
 			method := test.method
 			if method == "" {
