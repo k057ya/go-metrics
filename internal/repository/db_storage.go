@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sync"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -15,14 +14,10 @@ import (
 )
 
 type DBStorage struct {
-	dataMu     sync.Mutex
 	connection *sql.DB
 }
 
 func (storage *DBStorage) List(ctx context.Context) []model.Metrics {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
-
 	return storage.list(ctx)
 }
 
@@ -53,9 +48,6 @@ func (storage *DBStorage) list(ctx context.Context) []model.Metrics {
 }
 
 func (storage *DBStorage) Get(ctx context.Context, key string) (model.Metrics, error) {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
-
 	return storage.get(ctx, key)
 }
 
@@ -77,10 +69,6 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 }
 
 func (storage *DBStorage) Update(ctx context.Context, key string, m model.Metrics) (model.Metrics, error) {
-
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
-
 	if savedMetric, err := storage.get(ctx, key); err == nil {
 
 		if savedMetric.MType != m.MType {
@@ -133,7 +121,7 @@ func (storage *DBStorage) Close() error {
 	return storage.connection.Close()
 }
 
-func (storage *DBStorage) Migrate(db *sql.DB) {
+func (storage *DBStorage) Migrate(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		log.Fatal(err)
@@ -144,11 +132,12 @@ func (storage *DBStorage) Migrate(db *sql.DB) {
 		driver,
 	)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		log.Fatal("migrate err:", err)
+		return err
 	}
+	return nil
 }
 
 func NewDBStorage(dsn string) (*DBStorage, error) {

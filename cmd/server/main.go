@@ -103,25 +103,31 @@ func newRouter(storage repository.Storage) *chi.Mux {
 }
 
 func getStorage() (repository.Storage, error) {
-
-	var storage repository.Storage
+	var (
+		storage repository.Storage
+		err     error
+	)
 
 	// Init DB connection
-	storage, err := repository.NewDBStorage(config.DatabaseConfig.Dsn)
-	if err != nil {
-		fmt.Printf("Error setting up database connection: %v \n", err)
-
-		storage, err = repository.NewMemStorage(
-			context.Background(),
-			config.StorageConfig.BackupFilePath,
-			config.StorageConfig.Restore,
-			config.StorageConfig.BackupInterval,
-		)
+	if config.DatabaseConfig.Dsn != "" {
+		storage, err = repository.NewDBStorage(config.DatabaseConfig.Dsn)
 		if err != nil {
-			fmt.Printf("Unable to initialize mem/file storage: %v \n", err)
-			return nil, err
+			fmt.Printf("Error setting up database connection: %v \n", err)
+		} else {
+			return storage, err
 		}
+	}
 
+	// Init mem storage
+	storage, err = repository.NewMemStorage(
+		context.Background(),
+		config.StorageConfig.BackupFilePath,
+		config.StorageConfig.Restore,
+		config.StorageConfig.BackupInterval,
+	)
+	if err != nil {
+		fmt.Printf("Unable to initialize mem/file storage: %v \n", err)
+		return nil, err
 	}
 
 	return storage, nil
