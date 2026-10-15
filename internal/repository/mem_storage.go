@@ -88,6 +88,21 @@ func (storage *MemStorage) Update(ctx context.Context, key string, metrics model
 	return metrics, nil
 }
 
+func (storage *MemStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error) {
+	var updated []model.Metrics
+	for _, m := range mlist {
+		if err := m.Validate(); err != nil {
+			continue
+		}
+		m, err := storage.Update(ctx, m.ID, m)
+		if err != nil {
+			continue
+		}
+		updated = append(updated, m)
+	}
+	return updated, nil
+}
+
 func (storage *MemStorage) Delete(key string) bool {
 	storage.dataMu.Lock()
 	delete(storage.data, key)

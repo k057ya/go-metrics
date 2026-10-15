@@ -18,6 +18,7 @@ type StorageReader interface {
 
 type StorageWriter interface {
 	Update(ctx context.Context, key string, metrics model.Metrics) (model.Metrics, error)
+	BatchUpdate(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error)
 }
 
 type StorageLister interface {
@@ -25,5 +26,5 @@ type StorageLister interface {
 }
 
 type StorageDBPinger interface {
-	PingDB()
+	Ping(ctx context.Context) error
 }

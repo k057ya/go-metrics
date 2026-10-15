@@ -81,6 +81,10 @@ func newRouter(storage repository.Storage) *chi.Mux {
 		handler.PingDB(w, req, storage)
 	}
 
+	updateBatchController := func(w http.ResponseWriter, req *http.Request) {
+		handler.UpdateBatchHandler(w, req, storage)
+	}
+
 	// List all metrics
 	router.Get("/", listController)
 
@@ -95,6 +99,8 @@ func newRouter(storage repository.Storage) *chi.Mux {
 		router.Post("/{type}/{metric}/{value}", updateController) // Plain
 		router.Post("/", updateController)                        // JSON
 	})
+
+	router.Post("/updates", updateBatchController)
 
 	// Ping DB-connection
 	router.Get("/ping", pingDBController)
