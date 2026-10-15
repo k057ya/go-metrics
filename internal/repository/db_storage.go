@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -17,14 +16,10 @@ import (
 )
 
 type DBStorage struct {
-	dataMu     sync.Mutex
 	connection *sql.DB
 }
 
 func (storage *DBStorage) List(ctx context.Context) ([]model.Metrics, error) {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
-
 	return storage.list(ctx)
 }
 
@@ -67,9 +62,6 @@ func (storage *DBStorage) list(ctx context.Context) ([]model.Metrics, error) {
 }
 
 func (storage *DBStorage) Get(ctx context.Context, key string) (model.Metrics, error) {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
-
 	return storage.get(ctx, key)
 }
 
@@ -103,8 +95,6 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 }
 
 func (storage *DBStorage) Update(ctx context.Context, _ string, m model.Metrics) (model.Metrics, error) {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
 
 	var (
 		updated   model.Metrics
@@ -125,8 +115,6 @@ func (storage *DBStorage) Update(ctx context.Context, _ string, m model.Metrics)
 }
 
 func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error) {
-	storage.dataMu.Lock()
-	defer storage.dataMu.Unlock()
 
 	var validated []model.Metrics
 
@@ -234,7 +222,7 @@ func (storage *DBStorage) Close() error {
 	return storage.connection.Close()
 }
 
-func (storage *DBStorage) Migrate(db *sql.DB) {
+func (storage *DBStorage) Migrate(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		log.Fatal(err)
@@ -245,11 +233,12 @@ func (storage *DBStorage) Migrate(db *sql.DB) {
 		driver,
 	)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		log.Fatal("migrate err:", err)
+		return err
 	}
+	return nil
 }
 
 func NewDBStorage(dsn string) (*DBStorage, error) {
@@ -264,6 +253,6 @@ func NewDBStorage(dsn string) (*DBStorage, error) {
 	var storage = &DBStorage{
 		connection: db,
 	}
-	storage.Migrate(db)
-	return storage, nil
+	err = storage.Migrate(db)
+	return storage, err
 }
