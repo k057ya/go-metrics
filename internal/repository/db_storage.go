@@ -152,6 +152,6 @@ func NewDBStorage(dsn string) (*DBStorage, error) {
 	var storage = &DBStorage{
 		connection: db,
 	}
-	storage.Migrate(db)
-	return storage, nil
+	err = storage.Migrate(db)
+	return storage, err
 }
