@@ -7,13 +7,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/repository"
 )
 
-type StorageReader interface {
-	Get(key string) (model.Metrics, error)
-}
-
-func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage StorageReader) {
+func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageReader) {
 
 	var metricName string
 	var metricType string
@@ -42,7 +39,7 @@ func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage Sto
 		metricType = chi.URLParam(req, "type")
 	}
 
-	metric, err := storage.Get(metricName)
+	metric, err := storage.Get(req.Context(), metricName)
 
 	if err != nil {
 		resp.WriteHeader(http.StatusNotFound)

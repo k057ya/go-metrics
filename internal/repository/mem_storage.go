@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,14 +22,14 @@ type MemStorage struct {
 	backupMu       sync.Mutex
 }
 
-func (storage *MemStorage) List() []model.Metrics {
+func (storage *MemStorage) List(ctx context.Context) []model.Metrics {
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	return storage.list()
+	return storage.list(ctx)
 }
 
-func (storage *MemStorage) list() []model.Metrics {
+func (storage *MemStorage) list(_ context.Context) []model.Metrics {
 	metrics := make([]model.Metrics, 0, len(storage.data))
 	for _, v := range storage.data {
 		metrics = append(metrics, v)
@@ -36,14 +37,14 @@ func (storage *MemStorage) list() []model.Metrics {
 	return metrics
 }
 
-func (storage *MemStorage) Get(key string) (model.Metrics, error) {
+func (storage *MemStorage) Get(ctx context.Context, key string) (model.Metrics, error) {
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	return storage.get(key)
+	return storage.get(ctx, key)
 }
 
-func (storage *MemStorage) get(key string) (model.Metrics, error) {
+func (storage *MemStorage) get(_ context.Context, key string) (model.Metrics, error) {
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
@@ -52,12 +53,12 @@ func (storage *MemStorage) get(key string) (model.Metrics, error) {
 	return metric, err
 }
 
-func (storage *MemStorage) Update(key string, metrics model.Metrics) (model.Metrics, error) {
+func (storage *MemStorage) Update(ctx context.Context, key string, metrics model.Metrics) (model.Metrics, error) {
 
 	storage.dataMu.Lock()
 	defer storage.dataMu.Unlock()
 
-	if savedMetric, err := storage.get(key); err == nil {
+	if savedMetric, err := storage.get(ctx, key); err == nil {
 
 		if savedMetric.MType != metrics.MType {
 			return metrics, fmt.Errorf("metric type change is not supported: %s", savedMetric.MType)
@@ -79,7 +80,7 @@ func (storage *MemStorage) Update(key string, metrics model.Metrics) (model.Metr
 
 	// Backup data if sync backup is on
 	if storage.syncBackup {
-		err := storage.Backup(storage.list())
+		err := storage.Backup(storage.list(ctx))
 		if err != nil {
 			return metrics, err
 		}
@@ -201,7 +202,7 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 	return file, nil
 }
 
-func NewMemStorage(backupFilePath string, restore bool, backupInterval time.Duration) (*MemStorage, error) {
+func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, backupInterval time.Duration) (*MemStorage, error) {
 
 	syncBackup := backupInterval == 0
 
@@ -221,7 +222,7 @@ func NewMemStorage(backupFilePath string, restore bool, backupInterval time.Dura
 		go func() {
 			for {
 				time.Sleep(backupInterval)
-				data := storage.List()
+				data := storage.List(ctx)
 				storage.Backup(data)
 			}
 		}()
