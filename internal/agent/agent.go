@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/k057ya/go-metrics/internal/config"
+	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
@@ -36,6 +38,10 @@ type HTTPClient struct {
 
 // Короткий вызов со всеми настройками
 func (c *HTTPClient) Request(url string, body []byte) (*resty.Response, error) {
+	return c.RequestContext(context.Background(), url, body)
+}
+
+func (c *HTTPClient) RequestContext(ctx context.Context, url string, body []byte) (*resty.Response, error) {
 	var compressed bytes.Buffer
 	gzw := gzip.NewWriter(&compressed)
 	_, err := gzw.Write(body)
@@ -48,12 +54,28 @@ func (c *HTTPClient) Request(url string, body []byte) (*resty.Response, error) {
 		return nil, err
 	}
 
-	return c.R().
-		SetBody(compressed.Bytes()).
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Accept-Encoding", "gzip").
-		SetHeader("Content-Encoding", "gzip").
-		Post(url)
+	var response *resty.Response
+	err = errorshandler.WithRetry(
+		ctx,
+		func() error {
+			var requestError error
+			response, requestError = c.R().
+				SetContext(ctx).
+				SetBody(compressed.Bytes()).
+				SetHeader("Content-Type", "application/json").
+				SetHeader("Accept-Encoding", "gzip").
+				SetHeader("Content-Encoding", "gzip").
+				Post(url)
+			return requestError
+		},
+		[]errorshandler.Classifier{errorshandler.NewNetworkErrorClassifier()},
+		[]time.Duration{
+			1 * time.Second,
+			3 * time.Second,
+			5 * time.Second,
+		}, 3)
+
+	return response, err
 }
 
 type Agent struct {

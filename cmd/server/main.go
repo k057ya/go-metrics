@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"

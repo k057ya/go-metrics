@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
 )
 
@@ -17,35 +19,46 @@ type DBStorage struct {
 	connection *sql.DB
 }
 
-func (storage *DBStorage) List(ctx context.Context) []model.Metrics {
+func (storage *DBStorage) List(ctx context.Context) ([]model.Metrics, error) {
 	return storage.list(ctx)
 }
 
-func (storage *DBStorage) list(ctx context.Context) []model.Metrics {
+func (storage *DBStorage) list(ctx context.Context) ([]model.Metrics, error) {
 	var metrics []model.Metrics
 
-	rows, err := storage.connection.QueryContext(ctx, "SELECT id, \"type\", delta, \"value\" FROM metrics")
-	if err != nil {
-		fmt.Printf("error getting metrics from database: %v", err)
-	}
-	defer rows.Close()
-
-	if rows.Err() != nil {
-		fmt.Printf("error getting metrics from database: %v", err)
-	}
-
-	for rows.Next() {
-		var m model.Metrics
-		err = rows.Scan(&m.ID, &m.MType, &m.Delta, &m.Value)
+	err := errorshandler.WithRetry(ctx, func() error {
+		rows, err := storage.connection.QueryContext(ctx, "SELECT id, \"type\", delta, \"value\" FROM metrics")
 		if err != nil {
-			fmt.Printf("error scanning metric row: %v", err)
-			continue
+			return err
+		}
+		defer rows.Close()
+
+		var attemptMetrics []model.Metrics
+		for rows.Next() {
+			var m model.Metrics
+			if err := rows.Scan(&m.ID, &m.MType, &m.Delta, &m.Value); err != nil {
+				return err
+			}
+			attemptMetrics = append(attemptMetrics, m)
+		}
+		if err := rows.Err(); err != nil {
+			return err
 		}
 
-		metrics = append(metrics, m)
+		metrics = attemptMetrics
+		return nil
+	}, []errorshandler.Classifier{
+		errorshandler.NewPostgresErrorClassifier(),
+		errorshandler.NewNetworkErrorClassifier(),
+	}, []time.Duration{
+		1 * time.Second,
+		3 * time.Second,
+		5 * time.Second,
+	}, 3)
+	if err != nil {
+		return nil, err
 	}
-
-	return metrics
+	return metrics, nil
 }
 
 func (storage *DBStorage) Get(ctx context.Context, key string) (model.Metrics, error) {
@@ -53,20 +66,32 @@ func (storage *DBStorage) Get(ctx context.Context, key string) (model.Metrics, e
 }
 
 func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, error) {
-
-	row := storage.connection.QueryRowContext(
-		ctx,
-		"SELECT id, \"type\", delta, value from metrics WHERE id=$1 LIMIT 1",
-		key,
-	)
 	var m model.Metrics
-
-	err := row.Scan(&m.ID, &m.MType, &m.Delta, &m.Value)
+	err := errorshandler.WithRetry(ctx, func() error {
+		row := storage.connection.QueryRowContext(
+			ctx,
+			"SELECT id, \"type\", delta, value from metrics WHERE id=$1 LIMIT 1",
+			key,
+		)
+		var attemptMetric model.Metrics
+		if err := row.Scan(&attemptMetric.ID, &attemptMetric.MType, &attemptMetric.Delta, &attemptMetric.Value); err != nil {
+			return err
+		}
+		m = attemptMetric
+		return nil
+	}, []errorshandler.Classifier{
+		errorshandler.NewPostgresErrorClassifier(),
+		errorshandler.NewNetworkErrorClassifier(),
+	}, []time.Duration{
+		time.Second,
+		3 * time.Second,
+		5 * time.Second,
+	}, 3)
 	if err != nil {
 		return model.Metrics{}, err
 	}
 
-	return m, err
+	return m, nil
 }
 
 func (storage *DBStorage) Update(ctx context.Context, _ string, m model.Metrics) (model.Metrics, error) {
@@ -105,52 +130,83 @@ func (storage *DBStorage) BatchUpdate(ctx context.Context, mlist []model.Metrics
 
 func (storage *DBStorage) upsert(ctx context.Context, mlist []model.Metrics) ([]model.Metrics, error) {
 
-	var updated []model.Metrics
-
-	tx, err := storage.connection.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(
-		ctx,
-		"INSERT INTO metrics (id, \"type\", delta, \"value\", updated_at) "+
-			"VALUES ($1, $2, $3, $4, NOW()) "+
-			"ON CONFLICT(id) "+
-			"DO UPDATE SET "+
-			"delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta, "+
-			"value = EXCLUDED.value, "+
-			"updated_at = EXCLUDED.updated_at "+
-			"WHERE metrics.type = EXCLUDED.type "+
-			"RETURNING id, type, delta, value",
+	var (
+		updated []model.Metrics
+		err     error
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
 
-	for _, m := range mlist {
+	err = errorshandler.WithRetry(
+		ctx,
+		func() error {
 
-		var metric model.Metrics
-
-		err := stmt.
-			QueryRowContext(ctx, m.ID, m.MType, m.Delta, m.Value).
-			Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
-
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf(
-				"metric %q: type change is not supported", m.ID,
+			var (
+				tx             *sql.Tx
+				stmt           *sql.Stmt
+				attemptUpdated []model.Metrics
 			)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("upsert error: %q %w", m.ID, err)
-		}
 
-		updated = append(updated, metric)
-	}
+			tx, err = storage.connection.BeginTx(ctx, nil)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
 
-	err = tx.Commit()
+			stmt, err = tx.PrepareContext(
+				ctx,
+				"INSERT INTO metrics (id, \"type\", delta, \"value\", updated_at) "+
+					"VALUES ($1, $2, $3, $4, NOW()) "+
+					"ON CONFLICT(id) "+
+					"DO UPDATE SET "+
+					"delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta, "+
+					"value = EXCLUDED.value, "+
+					"updated_at = EXCLUDED.updated_at "+
+					"WHERE metrics.type = EXCLUDED.type "+
+					"RETURNING id, type, delta, value",
+			)
+			if err != nil {
+				return err
+			}
+			defer stmt.Close()
+
+			for _, m := range mlist {
+
+				var metric model.Metrics
+
+				err := stmt.
+					QueryRowContext(ctx, m.ID, m.MType, m.Delta, m.Value).
+					Scan(&metric.ID, &metric.MType, &metric.Delta, &metric.Value)
+
+				if errors.Is(err, sql.ErrNoRows) {
+					return fmt.Errorf(
+						"metric %q: type change is not supported", m.ID,
+					)
+				}
+				if err != nil {
+					return fmt.Errorf("upsert error: %q %w", m.ID, err)
+				}
+
+				attemptUpdated = append(attemptUpdated, metric)
+			}
+
+			err = tx.Commit()
+			if err != nil {
+				return &errorshandler.CommitError{Err: err}
+			}
+			updated = attemptUpdated
+
+			return nil
+		},
+		[]errorshandler.Classifier{
+			errorshandler.NewPostgresErrorClassifier(),
+			errorshandler.NewNetworkErrorClassifier(),
+		},
+		[]time.Duration{
+			1 * time.Second,
+			3 * time.Second,
+			5 * time.Second,
+		},
+		3,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +242,7 @@ func (storage *DBStorage) Migrate(db *sql.DB) error {
 }
 
 func NewDBStorage(dsn string) (*DBStorage, error) {
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
