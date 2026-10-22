@@ -16,55 +16,83 @@ import (
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
+	"github.com/k057ya/go-metrics/internal/service"
 )
-
-func NewHTTPClient(baseURL string) HTTPClient {
-	return HTTPClient{resty.New().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Accept-Encoding", "gzip").
-		SetBaseURL(baseURL),
-	}
-}
-
-type Metric struct {
-	ID    string `json:"id"`
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
 
 type HTTPClient struct {
 	*resty.Client
 }
 
-// Короткий вызов со всеми настройками
+func NewHTTPClient(baseURL string, gzip bool, signatureKey string) HTTPClient {
+	c := HTTPClient{resty.New().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Accept-Encoding", "gzip").
+		SetBaseURL(baseURL)}
+
+	if signatureKey != "" {
+		c.signRequestsWithKey(signatureKey)
+	}
+
+	if gzip {
+		c.useGzip()
+	}
+
+	return c
+}
+
+func (c *HTTPClient) signRequestsWithKey(key string) {
+	c.OnBeforeRequest(func(_ *resty.Client, request *resty.Request) error {
+		body, ok := request.Body.([]byte)
+		if !ok {
+			return fmt.Errorf("expected []byte body, got %T", request.Body)
+		}
+		request.SetHeader("HashSHA256", service.GenSignature(body, key))
+		return nil
+	})
+}
+
+func (c *HTTPClient) useGzip() {
+	c.OnBeforeRequest(func(_ *resty.Client, request *resty.Request) error {
+		body, ok := request.Body.([]byte)
+		if !ok {
+			return fmt.Errorf("expected []byte body, got %T", request.Body)
+		}
+		var compressed bytes.Buffer
+		gzw := gzip.NewWriter(&compressed)
+		_, err := gzw.Write(body)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return err
+		}
+		err = gzw.Close()
+		if err != nil {
+			return err
+		}
+
+		request.
+			SetHeader("Accept-Encoding", "gzip").
+			SetHeader("Content-Encoding", "gzip").
+			SetBody(compressed.Bytes())
+
+		return nil
+	})
+}
+
 func (c *HTTPClient) Request(url string, body []byte) (*resty.Response, error) {
 	return c.RequestContext(context.Background(), url, body)
 }
 
 func (c *HTTPClient) RequestContext(ctx context.Context, url string, body []byte) (*resty.Response, error) {
-	var compressed bytes.Buffer
-	gzw := gzip.NewWriter(&compressed)
-	_, err := gzw.Write(body)
-	if err != nil {
-		fmt.Printf("%s", err)
-		return nil, err
-	}
-	err = gzw.Close()
-	if err != nil {
-		return nil, err
-	}
 
 	var response *resty.Response
-	err = errorshandler.WithRetry(
+	err := errorshandler.WithRetry(
 		ctx,
 		func() error {
 			var requestError error
 			response, requestError = c.R().
 				SetContext(ctx).
-				SetBody(compressed.Bytes()).
+				SetBody(body).
 				SetHeader("Content-Type", "application/json").
-				SetHeader("Accept-Encoding", "gzip").
-				SetHeader("Content-Encoding", "gzip").
 				Post(url)
 			return requestError
 		},
@@ -83,6 +111,12 @@ type Agent struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	PollCount      int64
+}
+
+type Metric struct {
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 func Run(agent Agent) error {
