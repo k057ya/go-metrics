@@ -63,7 +63,6 @@ func Log(next http.Handler) http.Handler {
 			zap.String("method", method),
 			zap.ByteString("body", body),
 			zap.String("time", since.String()),
-			zap.Any("headers", r.Header),
 		)
 
 		logger.Log.Info("RESPONSE",

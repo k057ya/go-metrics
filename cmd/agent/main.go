@@ -15,7 +15,6 @@ type EnvConfig struct {
 	Address        string `env:"ADDRESS"`
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
-	SignatureKey   string `env:"KEY"`
 }
 
 func main() {
@@ -33,11 +32,7 @@ func main() {
 	)
 
 	var a = agent.Agent{
-		Client: agent.NewHTTPClient(
-			config.ClientConfig.Server.Address(),
-			true,
-			config.ClientConfig.Signature.Key,
-		),
+		Client:         agent.NewHTTPClient(config.ClientConfig.Server.Address()),
 		PollInterval:   config.ClientConfig.PollInterval.Interval,
 		ReportInterval: config.ClientConfig.ReportInterval.Interval,
 	}
@@ -72,10 +67,6 @@ func parseEnv() error {
 	if cfg.PollInterval != 0 {
 		setConf(config.ClientConfig.PollInterval, strconv.Itoa(cfg.PollInterval))
 	}
-
-	if cfg.SignatureKey != "" {
-		config.ClientConfig.Signature.Key = cfg.SignatureKey
-	}
 	return err
 }
 
@@ -83,7 +74,5 @@ func parseFlags() {
 	flag.Var(config.ClientConfig.Server, "a", "Server host and port")
 	flag.Var(config.ClientConfig.ReportInterval, "r", "Report sending interval in seconds")
 	flag.Var(config.ClientConfig.PollInterval, "p", "Fetch metrics poll interval in seconds")
-	flag.StringVar(&config.ClientConfig.Signature.Key, "k", "", "Key for signing requests")
-
 	flag.Parse()
 }

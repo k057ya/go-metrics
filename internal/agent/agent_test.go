@@ -158,7 +158,7 @@ func TestSendMetric(t *testing.T) {
 
 			var received receivedRequest
 
-			client := NewHTTPClient("http://metrics.test", true, "")
+			client := NewHTTPClient("http://metrics.test")
 
 			client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 
@@ -215,7 +215,7 @@ func TestSendMetric(t *testing.T) {
 }
 
 func TestSendMetricMalformedGzipBody(t *testing.T) {
-	client := NewHTTPClient("http://metrics.test", true, "")
+	client := NewHTTPClient("http://metrics.test")
 
 	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := "this is not gzip"
@@ -245,7 +245,7 @@ func TestRequestMalformedGzipBody(t *testing.T) {
 	})))
 	t.Cleanup(server.Close)
 
-	client := NewHTTPClient(server.URL, true, "")
+	client := NewHTTPClient(server.URL)
 
 	// Хук заменяющий body перед отправкой Request
 	client.OnBeforeRequest(func(_ *resty.Client, request *resty.Request) error {

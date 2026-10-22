@@ -83,7 +83,6 @@ type Client struct {
 	Server         *Server         `json:"server"`
 	PollInterval   *ClientInterval `json:"poll_interval"`
 	ReportInterval *ClientInterval `json:"report_interval"`
-	Signature      *Signature
 }
 
 var (
@@ -98,7 +97,6 @@ var ClientConfig = Client{
 	},
 	PollInterval:   DefaultPollInterval,
 	ReportInterval: DefaultReportInterval,
-	Signature:      SignatureConfig,
 }
 
 var StorageConfig = Storage{
@@ -120,9 +118,3 @@ func (d *Database) Set(value string) error {
 }
 
 var DatabaseConfig = &Database{}
-
-type Signature struct {
-	Key string
-}
-
-var SignatureConfig = &Signature{}
