@@ -11,20 +11,21 @@ import (
 
 type SignedResponseWriter struct {
 	http.ResponseWriter
-	bodyBuf   bytes.Buffer
-	Signature string
+	bodyBuf    bytes.Buffer
+	statusCode int
 }
 
 func (srw *SignedResponseWriter) Write(data []byte) (int, error) {
-	n, err := srw.ResponseWriter.Write(data)
-	if err != nil {
-		return 0, err
+	if srw.statusCode == 0 {
+		srw.WriteHeader(http.StatusOK)
 	}
-	_, err = srw.bodyBuf.Write(data)
-	if err != nil {
-		return 0, err
+	return srw.bodyBuf.Write(data)
+}
+
+func (srw *SignedResponseWriter) WriteHeader(statusCode int) {
+	if srw.statusCode == 0 {
+		srw.statusCode = statusCode
 	}
-	return n, nil
 }
 
 func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
@@ -53,21 +54,18 @@ func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
 					http.Error(w, "invalid signature", http.StatusBadRequest)
 					return
 				}
-
-				//
-				// отдать ответ
-				//
-				srw := &SignedResponseWriter{ResponseWriter: w}
-
-				// вызвать запрос
-				next.ServeHTTP(srw, r)
-
-				// подписать тело
-				srw.Header().Add(
-					"HashSHA256",
-					service.GenSignature(srw.bodyBuf.Bytes(), signatureKey),
-				)
 			}
+
+			// Вызываем обработчик независимо от наличия подписи в запросе.
+			// Буферизуем ответ, чтобы подписать его до отправки заголовков.
+			srw := &SignedResponseWriter{ResponseWriter: w}
+			next.ServeHTTP(srw, r)
+			w.Header().Set("HashSHA256", service.GenSignature(srw.bodyBuf.Bytes(), signatureKey))
+			if srw.statusCode == 0 {
+				srw.statusCode = http.StatusOK
+			}
+			w.WriteHeader(srw.statusCode)
+			w.Write(srw.bodyBuf.Bytes())
 		}
 
 		return http.HandlerFunc(signFn)
