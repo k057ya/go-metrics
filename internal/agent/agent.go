@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -17,6 +18,8 @@ import (
 	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/service"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
 )
 
 type HTTPClient struct {
@@ -25,6 +28,7 @@ type HTTPClient struct {
 
 func NewHTTPClient(baseURL string, gzip bool, signatureKey string) HTTPClient {
 	c := HTTPClient{resty.New().
+		SetTimeout(10*time.Second).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Accept-Encoding", "gzip").
 		SetBaseURL(baseURL)}
@@ -111,6 +115,7 @@ type Agent struct {
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	PollCount      int64
+	WorkerCount    int
 }
 
 type Metric struct {
@@ -119,7 +124,7 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
-func Run(agent Agent) error {
+func Run(ctx context.Context, agent Agent) error {
 
 	if agent.ReportInterval < agent.PollInterval {
 		fmt.Println("poll interval must be less than report interval, falling back to default values")
@@ -127,18 +132,130 @@ func Run(agent Agent) error {
 		agent.ReportInterval = config.DefaultReportInterval.Interval
 	}
 
-	pollsPerReport := int(agent.ReportInterval / agent.PollInterval)
+	// отдельный контекст для отправки
+	sendCtx, cancelSend := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelSend()
+
+	// собирать метрики
+	mchan := agent.collector(ctx)
+
+	// готовые к отправке батчи
+	bchan := make(chan []Metric)
+	go agent.batcher(mchan, bchan)
+
+	// отправлять метрики
+	var wg sync.WaitGroup
+	if agent.WorkerCount <= 0 {
+		agent.WorkerCount = config.ClientConfig.WorkerCount
+	}
+	for id := range agent.WorkerCount {
+		wg.Go(func() { agent.worker(sendCtx, id, bchan) })
+	}
+	workersDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersDone)
+	}()
+
+	<-ctx.Done()
+
+	// пробуем доотправить накопленное
+	shutdownTimeout := 5 * time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-workersDone:
+		return nil
+
+	// по истечению таймаута убиваем все запросы
+	// и ждем завершения воркеров
+	// и возвращаем ошибку
+	case <-timer.C:
+		cancelSend()
+
+		<-workersDone
+
+		return fmt.Errorf(
+			"workers were not finished in timeout %s: %w",
+			shutdownTimeout,
+			context.DeadlineExceeded,
+		)
+	}
+}
+
+func (agent Agent) collector(ctx context.Context) chan Metric {
+	mchan := make(chan Metric)
+	var wg sync.WaitGroup
+
+	collect := func(fetch func() []Metric) {
+		defer wg.Done()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+
+			for _, metric := range fetch() {
+				select {
+				case <-ctx.Done():
+					return
+				case mchan <- metric:
+				}
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(agent.PollInterval):
+			}
+		}
+	}
+
+	wg.Add(2)
+	go collect(agent.fetchMetrics)
+	go collect(agent.fetchPsUtilMetrics)
+
+	go func() {
+		wg.Wait()
+		defer close(mchan)
+	}()
+
+	return mchan
+}
+
+func (agent Agent) batcher(mchan <-chan Metric, bchan chan<- []Metric) {
+	defer close(bchan)
+	ticker := time.NewTicker(agent.ReportInterval)
+	defer ticker.Stop()
+
+	var batch []Metric
+
+	var push = func() {
+		if len(batch) != 0 {
+			bchan <- batch
+		}
+	}
 
 	for {
-		var collected []Metric
-		for range pollsPerReport {
-			time.Sleep(agent.PollInterval)
-			collected = agent.fetchMetrics()
-		}
+		select {
+		case <-ticker.C:
+			push()
+			batch = nil
 
-		if _, err := sendBatch(collected, agent.Client); err != nil {
-			// TODO
-			continue
+		case m, ok := <-mchan:
+			if !ok {
+				push()
+				return
+			}
+			batch = append(batch, m)
+		}
+	}
+}
+
+func (agent Agent) worker(ctx context.Context, id int, batches <-chan []Metric) {
+	for batch := range batches {
+		if _, err := sendBatch(ctx, batch, agent.Client); err != nil && ctx.Err() == nil {
+			fmt.Printf("Worker %d: send batch %v\n", id, err)
 		}
 	}
 }
@@ -170,7 +287,11 @@ func sendMetric(metric Metric, client HTTPClient) error {
 	return nil
 }
 
-func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
+func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
 	var metrics []model.Metrics
 	for _, m := range mlist {
 		metric := model.Metrics{
@@ -194,7 +315,7 @@ func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
 		fmt.Printf("error marshalling metric list")
 		return 0, err
 	}
-	response, err := client.Request(`/updates`, mjson)
+	response, err := client.RequestContext(ctx, `/updates`, mjson)
 
 	if err != nil {
 		return 0, err
@@ -207,27 +328,25 @@ func sendBatch(mlist []Metric, client HTTPClient) (int64, error) {
 	return int64(len(metrics)), nil
 }
 
+func gauge(id string, value float64) Metric {
+	return Metric{
+		ID:    id,
+		Type:  "gauge",
+		Value: strconv.FormatFloat(value, 'f', -1, 64),
+	}
+}
+
+func counter(id string, value int64) Metric {
+	return Metric{
+		ID:    id,
+		Type:  "counter",
+		Value: strconv.FormatInt(value, 10),
+	}
+}
+
 func (a Agent) fetchMetrics() []Metric {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
-
-	a.PollCount += 1
-
-	gauge := func(id string, value float64) Metric {
-		return Metric{
-			ID:    id,
-			Type:  "gauge",
-			Value: strconv.FormatFloat(value, 'f', -1, 64),
-		}
-	}
-
-	counter := func(id string, value int64) Metric {
-		return Metric{
-			ID:    id,
-			Type:  "counter",
-			Value: strconv.FormatInt(value, 10),
-		}
-	}
 
 	return []Metric{
 		gauge("Alloc", float64(stats.Alloc)),
@@ -257,7 +376,27 @@ func (a Agent) fetchMetrics() []Metric {
 		gauge("StackSys", float64(stats.StackSys)),
 		gauge("Sys", float64(stats.Sys)),
 		gauge("TotalAlloc", float64(stats.TotalAlloc)),
-		counter("PollCount", a.PollCount),
+		counter("PollCount", 1),
 		gauge("RandomValue", rand.Float64()),
 	}
+}
+
+func (a Agent) fetchPsUtilMetrics() []Metric {
+	memStats, err := mem.VirtualMemory()
+	if err != nil {
+		return nil
+	}
+	metrics := []Metric{
+		gauge("TotalMemory", float64(memStats.Total)),
+		gauge("FreeMemory", float64(memStats.Available)),
+	}
+	cpuStats, err := cpu.Percent(0, true)
+	if err != nil {
+		return metrics
+	}
+
+	for i, usage := range cpuStats {
+		metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1)), usage)
+	}
+	return metrics
 }

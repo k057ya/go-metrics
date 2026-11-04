@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/k057ya/go-metrics/internal/agent"
@@ -16,6 +19,7 @@ type EnvConfig struct {
 	ReportInterval int    `env:"REPORT_INTERVAL"`
 	PollInterval   int    `env:"POLL_INTERVAL"`
 	SignatureKey   string `env:"KEY"`
+	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
 func main() {
@@ -40,10 +44,14 @@ func main() {
 		),
 		PollInterval:   config.ClientConfig.PollInterval.Interval,
 		ReportInterval: config.ClientConfig.ReportInterval.Interval,
+		WorkerCount:    config.ClientConfig.WorkerCount,
 	}
 
-	err := agent.Run(a)
-	fmt.Println("Error starting agent: " + err.Error())
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := agent.Run(ctx, a); err != nil {
+		fmt.Printf("Error starting agent: %v", err)
+	}
 }
 
 func parseEnv() error {
@@ -76,6 +84,10 @@ func parseEnv() error {
 	if cfg.SignatureKey != "" {
 		config.ClientConfig.Signature.Key = cfg.SignatureKey
 	}
+
+	if cfg.RateLimit > 0 {
+		config.ClientConfig.WorkerCount = cfg.RateLimit
+	}
 	return err
 }
 
@@ -84,6 +96,7 @@ func parseFlags() {
 	flag.Var(config.ClientConfig.ReportInterval, "r", "Report sending interval in seconds")
 	flag.Var(config.ClientConfig.PollInterval, "p", "Fetch metrics poll interval in seconds")
 	flag.StringVar(&config.ClientConfig.Signature.Key, "k", "", "Key for signing requests")
+	flag.IntVar(&config.ClientConfig.WorkerCount, "l", 1, "Rate limit for sending requests")
 
 	flag.Parse()
 }

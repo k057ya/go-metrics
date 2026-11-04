@@ -84,6 +84,7 @@ type Client struct {
 	PollInterval   *ClientInterval `json:"poll_interval"`
 	ReportInterval *ClientInterval `json:"report_interval"`
 	Signature      *Signature
+	WorkerCount    int
 }
 
 var (
@@ -99,6 +100,7 @@ var ClientConfig = Client{
 	PollInterval:   DefaultPollInterval,
 	ReportInterval: DefaultReportInterval,
 	Signature:      SignatureConfig,
+	WorkerCount:    3,
 }
 
 var StorageConfig = Storage{
