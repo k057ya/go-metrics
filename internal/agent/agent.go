@@ -344,7 +344,7 @@ func counter(id string, value int64) Metric {
 	}
 }
 
-func (a Agent) fetchMetrics() []Metric {
+func (agent Agent) fetchMetrics() []Metric {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 
@@ -381,7 +381,7 @@ func (a Agent) fetchMetrics() []Metric {
 	}
 }
 
-func (a Agent) fetchPsUtilMetrics() []Metric {
+func (agent Agent) fetchPsUtilMetrics() []Metric {
 	memStats, err := mem.VirtualMemory()
 	if err != nil {
 		return nil
