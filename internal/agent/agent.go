@@ -396,7 +396,7 @@ func (a Agent) fetchPsUtilMetrics() []Metric {
 	}
 
 	for i, usage := range cpuStats {
-		metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1)), usage)
+		metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1), usage))
 	}
 	return metrics
 }
