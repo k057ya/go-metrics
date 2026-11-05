@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"compress/gzip"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -11,6 +10,11 @@ import (
 type compressedWriter struct {
 	w  http.ResponseWriter
 	zw *gzip.Writer
+}
+
+type Logger interface {
+	Warnw(message string, params ...any)
+	Errorw(message string, params ...any)
 }
 
 func (c compressedWriter) Header() http.Header {
@@ -22,14 +26,12 @@ func (c compressedWriter) Write(bytes []byte) (int, error) {
 }
 
 func (c compressedWriter) WriteHeader(statusCode int) {
-	if statusCode < 300 {
-		c.w.Header().Set("Content-Encoding", "gzip")
-	}
+	c.w.Header().Set("Content-Encoding", "gzip")
 	c.w.WriteHeader(statusCode)
 }
 
-func (c compressedWriter) Close() {
-	c.zw.Close()
+func (c compressedWriter) Close() error {
+	return c.zw.Close()
 }
 
 type compressedReader struct {
@@ -48,7 +50,13 @@ func (c compressedReader) Close() error {
 	return c.zr.Close()
 }
 
-func Compress(next http.Handler) http.Handler {
+func Compress(log Logger) func (http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return compress(next, log)
+	}
+}
+
+func compress(next http.Handler, log Logger) http.Handler {
 	compressFn := func(w http.ResponseWriter, r *http.Request) {
 
 		ow := w
@@ -62,19 +70,33 @@ func Compress(next http.Handler) http.Handler {
 				// replace writer
 				cw := &compressedWriter{w, gzip.NewWriter(w)}
 				ow = cw
-				defer cw.Close()
+				defer func(){
+					err := cw.Close()
+					if err != nil {
+						log.Warnw("error closing writer", err)
+					}
+				}()
 			}
 
 			e := r.Header.Get("Content-Encoding")
 			if strings.Contains(e, "gzip") {
 				cr, err := gzip.NewReader(r.Body)
 				if err != nil {
-					fmt.Printf("Unable to read body as gzip: %s", err)
+					log.Warnw("Unable to read body as gzip",
+						"error", err,
+						"method", r.Method,
+						"path", r.URL.Path,
+					)
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
 				r.Body = &compressedReader{r.Body, cr}
-				defer cr.Close()
+				defer func() {
+					err := cr.Close()
+					if err != nil {
+						log.Warnw("error closing reader", err)
+					}
+				}()
 			}
 
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func jsonEncode(value any) string {
@@ -36,15 +37,16 @@ func TestUpdateMetricsHandler(t *testing.T) {
 		require.NoError(t, os.Remove(tmpPath))
 	})
 
-	storage, _ := repository.NewMemStorage(context.Background(), tmpPath, false, 0)
+	log := zap.NewNop().Sugar()
+	storage, _ := repository.NewMemStorage(context.Background(), tmpPath, false, 0, log)
 	router := chi.NewRouter()
 	router.Post("/update/{type}/{metric}/{value}", func(w http.ResponseWriter, r *http.Request) {
-		UpdateMetricsHandler(w, r, storage)
+		UpdateMetricsHandler(w, r, storage, log)
 	})
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	var httpClient = agent.NewHTTPClient(server.URL + "/update/")
+	var httpClient = agent.NewHTTPClient(server.URL+"/update/", "")
 
 	type want struct {
 		code        int
@@ -229,11 +231,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 
-			request := httpClient.R().SetBody("")
-
-			if test.body != "" {
-				request.SetBody(test.body)
-			}
+			request := httpClient.R().SetBody([]byte(test.body))
 
 			method := test.method
 			if method == "" {

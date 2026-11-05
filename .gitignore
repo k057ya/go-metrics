@@ -27,3 +27,4 @@ vendor/
 .vscode
 /postgres_data/
 /docker-compose.yml
+.zed/
