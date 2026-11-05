@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+// Clone клонирует значение при инициализации
+// чтобы не изменять дефолтные значения и использовать
+// их в случае ошибок
+func Clone[T any](val *T) *T {
+	clone := *val
+	return &clone
+}
+
 type Server struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
@@ -90,6 +98,7 @@ type Client struct {
 var (
 	DefaultPollInterval   = &ClientInterval{2 * time.Second}
 	DefaultReportInterval = &ClientInterval{10 * time.Second}
+	DefaultWorkerCount = 3
 )
 
 var ClientConfig = Client{
@@ -97,10 +106,10 @@ var ClientConfig = Client{
 		Host: "localhost",
 		Port: 8080,
 	},
-	PollInterval:   DefaultPollInterval,
-	ReportInterval: DefaultReportInterval,
+	PollInterval:   Clone(DefaultPollInterval),
+	ReportInterval: Clone(DefaultReportInterval),
 	Signature:      SignatureConfig,
-	WorkerCount:    3,
+	WorkerCount:    DefaultWorkerCount,
 }
 
 var StorageConfig = Storage{

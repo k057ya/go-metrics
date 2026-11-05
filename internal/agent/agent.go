@@ -16,17 +16,19 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
+	"github.com/k057ya/go-metrics/internal/logger"
 	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/service"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
+	"go.uber.org/zap"
 )
 
 type HTTPClient struct {
 	*resty.Client
 }
 
-func NewHTTPClient(baseURL string, gzip bool, signatureKey string) HTTPClient {
+func NewHTTPClient(baseURL string, signatureKey string) HTTPClient {
 	c := HTTPClient{resty.New().
 		SetTimeout(10*time.Second).
 		SetHeader("Content-Type", "application/json").
@@ -37,9 +39,7 @@ func NewHTTPClient(baseURL string, gzip bool, signatureKey string) HTTPClient {
 		c.signRequestsWithKey(signatureKey)
 	}
 
-	if gzip {
-		c.useGzip()
-	}
+	c.useGzip()
 
 	return c
 }
@@ -50,7 +50,7 @@ func (c *HTTPClient) signRequestsWithKey(key string) {
 		if !ok {
 			return fmt.Errorf("expected []byte body, got %T", request.Body)
 		}
-		request.SetHeader("HashSHA256", service.GenSignature(body, key))
+		request.SetHeader("HashSHA256", service.GenSignatureBase64(body, key))
 		return nil
 	})
 }
@@ -65,7 +65,6 @@ func (c *HTTPClient) useGzip() {
 		gzw := gzip.NewWriter(&compressed)
 		_, err := gzw.Write(body)
 		if err != nil {
-			fmt.Printf("%s", err)
 			return err
 		}
 		err = gzw.Close()
@@ -126,8 +125,12 @@ type Metric struct {
 
 func Run(ctx context.Context, agent Agent) error {
 
-	if agent.ReportInterval < agent.PollInterval {
-		fmt.Println("poll interval must be less than report interval, falling back to default values")
+	if agent.ReportInterval <= 0 || agent.PollInterval <= 0 || agent.ReportInterval < agent.PollInterval {
+
+		logger.Log.Warn("invalid polling / reporting intervals",
+			zap.Duration("ReportInterval", agent.ReportInterval),
+			zap.Duration("PollInterval", agent.PollInterval),
+		)
 		agent.PollInterval = config.DefaultPollInterval.Interval
 		agent.ReportInterval = config.DefaultReportInterval.Interval
 	}
@@ -146,8 +149,9 @@ func Run(ctx context.Context, agent Agent) error {
 	// отправлять метрики
 	var wg sync.WaitGroup
 	if agent.WorkerCount <= 0 {
-		agent.WorkerCount = config.ClientConfig.WorkerCount
+		agent.WorkerCount = config.DefaultWorkerCount
 	}
+
 	for id := range agent.WorkerCount {
 		wg.Go(func() { agent.worker(sendCtx, id, bchan) })
 	}
@@ -255,7 +259,12 @@ func (agent Agent) batcher(mchan <-chan Metric, bchan chan<- []Metric) {
 func (agent Agent) worker(ctx context.Context, id int, batches <-chan []Metric) {
 	for batch := range batches {
 		if _, err := sendBatch(ctx, batch, agent.Client); err != nil && ctx.Err() == nil {
-			fmt.Printf("Worker %d: send batch %v\n", id, err)
+			logger.Log.Warn(
+				"Error sending batch",
+				zap.Int("worker", id),
+				zap.Any("batch size", len(batch)),
+				zap.Error(err),
+			)
 		}
 	}
 }
@@ -300,7 +309,11 @@ func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient) (int64, e
 		}
 		err := metric.Parse(m.Value)
 		if err != nil {
-			fmt.Printf("cannot parse metric: %s %s", m.ID, err)
+			logger.Log.Warn(
+				"cannot parse metric",
+				zap.Any("metric", m),
+				zap.Error(err),
+			)
 			continue
 		}
 		metrics = append(metrics, metric)
@@ -312,7 +325,6 @@ func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient) (int64, e
 
 	mjson, err := json.Marshal(metrics)
 	if err != nil {
-		fmt.Printf("error marshalling metric list")
 		return 0, err
 	}
 	response, err := client.RequestContext(ctx, `/updates`, mjson)
@@ -382,21 +394,26 @@ func (agent Agent) fetchMetrics() []Metric {
 }
 
 func (agent Agent) fetchPsUtilMetrics() []Metric {
+
+	var metrics []Metric
+
 	memStats, err := mem.VirtualMemory()
 	if err != nil {
-		return nil
-	}
-	metrics := []Metric{
-		gauge("TotalMemory", float64(memStats.Total)),
-		gauge("FreeMemory", float64(memStats.Available)),
-	}
-	cpuStats, err := cpu.Percent(0, true)
-	if err != nil {
-		return metrics
+		logger.Log.Sugar().Warnw("error getting memory info", err)
+	} else {
+		metrics = []Metric{
+			gauge("TotalMemory", float64(memStats.Total)),
+			gauge("FreeMemory", float64(memStats.Available)),
+		}
 	}
 
-	for i, usage := range cpuStats {
-		metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1), usage))
+	cpuStats, err := cpu.Percent(0, true)
+	if err != nil {
+		logger.Log.Sugar().Warnw("error getting cpu info", err)
+	} else {
+		for i, usage := range cpuStats {
+			metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1), usage))
+		}
 	}
 	return metrics
 }

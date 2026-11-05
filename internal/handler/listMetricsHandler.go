@@ -8,9 +8,10 @@ import (
 	"github.com/k057ya/go-metrics/internal/repository"
 )
 
-func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister) {
+func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister, log Logger) {
 	metrics, err := storage.List(req.Context())
 	if err != nil {
+		log.Errorw("error listing metrics", err)
 		http.Error(resp, "cannot list metrics", http.StatusInternalServerError)
 		return
 	}
@@ -37,5 +38,9 @@ func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage reposit
 	}
 	html.WriteString("</ul>")
 
-	resp.Write([]byte(html.String()))
+	_, err = resp.Write([]byte(html.String()))
+	if err != nil {
+		log.Warnw("error writing response", err)
+		return
+	}
 }
