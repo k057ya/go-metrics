@@ -88,7 +88,7 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 	}, 3)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		err = NewNotFoundError(err)
+		err = newNotFoundError(err)
 	}
 
 	return m, err

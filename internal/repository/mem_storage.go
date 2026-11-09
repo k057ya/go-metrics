@@ -49,7 +49,7 @@ func (storage *MemStorage) get(_ context.Context, key string) (model.Metrics, er
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
-		err = NewNotFoundError(fmt.Errorf("key not found: %s", key))
+		err = newNotFoundError(fmt.Errorf("key not found: %s", key))
 	}
 	return metric, err
 }

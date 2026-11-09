@@ -12,7 +12,7 @@ func (nfe *NotFoundError) Unwrap() error {
 	return nfe.Err
 }
 
-func NewNotFoundError(err error) error {
+func newNotFoundError(err error) error {
 	return &NotFoundError{
 		Err: err,
 	}
