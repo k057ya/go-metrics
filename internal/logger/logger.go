@@ -21,6 +21,5 @@ func Initialize(level string) error {
 	}
 	// устанавливаем синглтон
 	Log = zl
-	defer zl.Sync()
 	return nil
 }

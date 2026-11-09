@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/go-chi/chi/v5"
@@ -16,6 +16,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/logger"
 	"github.com/k057ya/go-metrics/internal/middleware"
 	"github.com/k057ya/go-metrics/internal/repository"
+	"go.uber.org/zap"
 )
 
 type EnvConfig struct {
@@ -30,61 +31,62 @@ type EnvConfig struct {
 func main() {
 	// Init logger
 	if err := logger.Initialize("info"); err != nil {
-		fmt.Printf("Error while initializing logger: `%s`\n", err)
+		fmt.Fprintln(os.Stderr, "Error while initializing logger:", err)
 		return
 	}
+	defer logger.Log.Sync()
 
 	// Prepare config
 	parseFlags()
 	if err := parseEnv(); err != nil {
-		fmt.Printf("Unable to parse ENV-vars, falling back to flag values: %s\n", err)
+		logger.Log.Warn("Unable to parse ENV-vars, falling back to flag values", zap.Error(err))
 	}
 
 	// Init storage
 	storage, err := getStorage()
 	if err != nil {
-		fmt.Printf("Error while initializing storage: `%s`\n", err)
+		logger.Log.Error("Error while initializing storage", zap.Error(err))
 		return
 	}
 
 	// Init router
-	router := newRouter(storage, true, config.SignatureConfig.Key)
+	router := newRouter(storage, config.SignatureConfig.Key)
 
 	// Start server
-	fmt.Printf("Starting server on %s...", config.ServerConfig.String())
+	logger.Log.Sugar().Infof("Starting server on %s...", config.ServerConfig.String())
 	err = http.ListenAndServe(config.ServerConfig.String(), router)
 
 	if err != nil {
-		fmt.Printf("Error starting server: `%s`\n", err)
+		logger.Log.Error("Error starting server", zap.Error(err))
 	}
 }
 
-func newRouter(storage repository.Storage, gzip bool, signatureKey string) *chi.Mux {
+func newRouter(storage repository.Storage, signatureKey string) *chi.Mux {
 	router := chi.NewRouter()
 	// Add Middlewares:
 	// - chi middleware to strip trailing slash
 	router.Use(chimiddleware.StripSlashes)
 
 	// - gzip compression middleware
-	if gzip {
-		router.Use(middleware.Compress)
-	}
+	router.Use(middleware.Compress(logger.Log.Sugar().Named("gzip")))
 	// If key provided - require and validate signature header, sign responses
 	if signatureKey != "" {
-		router.Use(middleware.CheckAndSign(signatureKey))
+		router.Use(middleware.CheckAndSign(signatureKey, logger.Log.Sugar().Named("signer")))
 	}
 
 	// - logger middleware for all routes
 	router.Use(middleware.Log)
 
+	handlerLog := logger.Log.Sugar().Named("handler")
+
 	listController := func(w http.ResponseWriter, req *http.Request) {
-		handler.ListAllMetrics(w, req, storage)
+		handler.ListAllMetrics(w, req, storage, handlerLog)
 	}
 	valueController := func(w http.ResponseWriter, req *http.Request) {
-		handler.PrintMetricHandler(w, req, storage)
+		handler.PrintMetricHandler(w, req, storage, handlerLog)
 	}
 	updateController := func(w http.ResponseWriter, req *http.Request) {
-		handler.UpdateMetricsHandler(w, req, storage)
+		handler.UpdateMetricsHandler(w, req, storage, handlerLog)
 	}
 
 	pingDBController := func(w http.ResponseWriter, req *http.Request) {
@@ -92,7 +94,7 @@ func newRouter(storage repository.Storage, gzip bool, signatureKey string) *chi.
 	}
 
 	updateBatchController := func(w http.ResponseWriter, req *http.Request) {
-		handler.UpdateBatchHandler(w, req, storage)
+		handler.UpdateBatchHandler(w, req, storage, handlerLog)
 	}
 
 	// List all metrics
@@ -128,7 +130,7 @@ func getStorage() (repository.Storage, error) {
 	if config.DatabaseConfig.Dsn != "" {
 		storage, err = repository.NewDBStorage(config.DatabaseConfig.Dsn)
 		if err != nil {
-			fmt.Printf("Error setting up database connection: %v \n", err)
+			logger.Log.Warn("Error setting up database connection", zap.Error(err))
 		} else {
 			return storage, err
 		}
@@ -140,9 +142,10 @@ func getStorage() (repository.Storage, error) {
 		config.StorageConfig.BackupFilePath,
 		config.StorageConfig.Restore,
 		config.StorageConfig.BackupInterval,
+		logger.Log.Sugar().Named("mem_storage"),
 	)
 	if err != nil {
-		fmt.Printf("Unable to initialize mem/file storage: %v \n", err)
+		logger.Log.Warn("Unable to initialize mem/file storage", zap.Error(err))
 		return nil, err
 	}
 
@@ -153,12 +156,11 @@ func parseEnv() error {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	if cfg.Address != "" {
 		if err := config.ServerConfig.Set(cfg.Address); err != nil {
-			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "Address", config.ServerConfig.String(), err)
+			logger.Log.Sugar().Warnf("cannot set %s from env, falling back to `%s`. Error: %s", "Address", config.ServerConfig.String(), err)
 		}
 	}
 	if cfg.Restore {
@@ -169,12 +171,12 @@ func parseEnv() error {
 	}
 	if cfg.StoreInterval != "" {
 		if err := config.StorageConfig.SetBackupInterval(cfg.StoreInterval); err != nil {
-			fmt.Printf("cannot set %s from env, falling back to `%s`. Error: %s\n", "StoreInterval", config.StorageConfig.BackupInterval.String(), err)
+			logger.Log.Sugar().Warnf("cannot set %s from env, falling back to `%s`. Error: %s", "StoreInterval", config.StorageConfig.BackupInterval.String(), err)
 		}
 	}
 	if cfg.DatabaseDsn != "" {
 		if err := config.DatabaseConfig.Set(cfg.DatabaseDsn); err != nil {
-			fmt.Printf("cannot set %s from env. Error %s\n", "DatabaseDsn", err)
+			logger.Log.Sugar().Warnf("cannot set %s from env. Error %s", "DatabaseDsn", err)
 		}
 	}
 	if cfg.SignatureKey != "" {
@@ -188,7 +190,7 @@ func parseFlags() {
 	flag.Func("i", "Backup interval in seconds, `0` for sync",
 		func(value string) error {
 			if err := config.StorageConfig.SetBackupInterval(value); err != nil {
-				fmt.Printf("invalid interval, using default %s\n", config.StorageConfig.BackupInterval)
+				logger.Log.Sugar().Warnf("invalid interval, using default %s", config.StorageConfig.BackupInterval)
 			}
 			return nil
 		},

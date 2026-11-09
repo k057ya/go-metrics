@@ -15,6 +15,7 @@ import (
 	"github.com/k057ya/go-metrics/internal/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -110,7 +111,6 @@ func TestSendMetric(t *testing.T) {
 		name         string
 		metric       Metric
 		statusCode   int
-		gzip         bool
 		transportErr error
 		wantPath     string
 		wantErr      bool
@@ -120,7 +120,6 @@ func TestSendMetric(t *testing.T) {
 			name:       "#1 send gauge",
 			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.5"},
 			statusCode: http.StatusOK,
-			gzip:       true,
 		},
 		{
 			name:       "#2 send counter",
@@ -143,7 +142,6 @@ func TestSendMetric(t *testing.T) {
 			name:       "#5 gzip request",
 			metric:     Metric{ID: "Alloc", Type: "gauge", Value: "12.54"},
 			statusCode: http.StatusOK,
-			gzip:       true,
 		},
 		{
 			name:        "#6 body",
@@ -158,7 +156,7 @@ func TestSendMetric(t *testing.T) {
 
 			var received receivedRequest
 
-			client := NewHTTPClient("http://metrics.test", true, "")
+			client := NewHTTPClient("http://metrics.test", "")
 
 			client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 
@@ -215,7 +213,7 @@ func TestSendMetric(t *testing.T) {
 }
 
 func TestSendMetricMalformedGzipBody(t *testing.T) {
-	client := NewHTTPClient("http://metrics.test", true, "")
+	client := NewHTTPClient("http://metrics.test", "")
 
 	client.SetTransport(roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := "this is not gzip"
@@ -239,13 +237,14 @@ func TestSendMetricMalformedGzipBody(t *testing.T) {
 }
 
 func TestRequestMalformedGzipBody(t *testing.T) {
-	server := httptest.NewServer(middleware.Compress(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	log := zap.NewNop().Sugar()
+	server := httptest.NewServer(middleware.Compress(log)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("malformed gzip reached handler")
 		w.WriteHeader(http.StatusNoContent)
 	})))
 	t.Cleanup(server.Close)
 
-	client := NewHTTPClient(server.URL, true, "")
+	client := NewHTTPClient(server.URL, "")
 
 	// Хук заменяющий body перед отправкой Request
 	client.OnBeforeRequest(func(_ *resty.Client, request *resty.Request) error {

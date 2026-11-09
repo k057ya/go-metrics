@@ -20,6 +20,7 @@ type MemStorage struct {
 	backupFilePath string
 	syncBackup     bool
 	backupMu       sync.Mutex
+	log            Logger
 }
 
 func (storage *MemStorage) List(ctx context.Context) ([]model.Metrics, error) {
@@ -48,7 +49,7 @@ func (storage *MemStorage) get(_ context.Context, key string) (model.Metrics, er
 	metric, ok := storage.data[key]
 	var err error
 	if !ok {
-		err = fmt.Errorf("key not found: %s", key)
+		err = newNotFoundError(fmt.Errorf("key not found: %s", key))
 	}
 	return metric, err
 }
@@ -82,6 +83,7 @@ func (storage *MemStorage) Update(ctx context.Context, key string, metrics model
 	if storage.syncBackup {
 		err := storage.Backup(storage.list(ctx))
 		if err != nil {
+			storage.log.Errorw("unable to backup storage", err)
 			return metrics, err
 		}
 	}
@@ -96,6 +98,7 @@ func (storage *MemStorage) BatchUpdate(ctx context.Context, mlist []model.Metric
 		}
 		m, err := storage.Update(ctx, m.ID, m)
 		if err != nil {
+			storage.log.Warnw("error updating storage", err)
 			continue
 		}
 		updated = append(updated, m)
@@ -123,9 +126,16 @@ func (storage *MemStorage) Backup(data []model.Metrics) error {
 	defer storage.backupMu.Unlock()
 	bak, err := storage.openBackupFile(os.O_RDWR | os.O_CREATE)
 	if err != nil {
+		storage.log.Errorw("error opening backup file", err)
 		return err
 	}
-	defer bak.Close()
+	defer func(){
+		err = errors.Join(err, bak.Close())
+
+		if err != nil {
+			storage.log.Errorw("error closing backup file", err)
+		}
+	}()
 
 	list, err := json.Marshal(data)
 	if err != nil {
@@ -154,9 +164,16 @@ func (storage *MemStorage) Restore() error {
 
 	bak, err := storage.openBackupFile(os.O_RDONLY | os.O_CREATE)
 	if err != nil {
+		storage.log.Errorw("error opening backup file", err)
 		return err
 	}
-	defer bak.Close()
+
+	defer func(){
+		err = errors.Join(err, bak.Close())
+		if err != nil {
+			storage.log.Errorw("error closing backup file", err)
+		}
+	}()
 
 	if _, err := bak.Seek(0, 0); err != nil {
 		return err
@@ -194,21 +211,17 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 	if err != nil {
 		tmp, tmpErr := os.CreateTemp("", "go-metrics-storage-*")
 		if tmpErr != nil {
-			return nil, fmt.Errorf("cannot open storage: %v; cannot create temp file: %v",
+			return nil, fmt.Errorf("cannot open storage: %w; cannot create temp file: %w",
 				err, tmpErr)
 		}
 
-		tmpPath, err := filepath.Abs(tmp.Name())
-		if err != nil {
+		tmpPath, tmpErr := filepath.Abs(tmp.Name())
+		if tmpErr != nil {
 			tmp.Close()
-			return nil, fmt.Errorf("cannot get temp file path: %v", err)
+			return nil, fmt.Errorf("cannot get temp file path: %w", tmpErr)
 		}
 
-		fmt.Printf(
-			"Error opening storage file: %v. Falling back to temp file: %s\n",
-			err,
-			tmpPath,
-		)
+		storage.log.Warnw("Error opening storage file. Falling back to temp file", err, "tmp path", tmpPath)
 
 		// дальше работаем с временным файлом
 		file = tmp
@@ -217,7 +230,7 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 	return file, nil
 }
 
-func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, backupInterval time.Duration) (*MemStorage, error) {
+func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, backupInterval time.Duration, log Logger) (*MemStorage, error) {
 
 	syncBackup := backupInterval == 0
 
@@ -225,6 +238,7 @@ func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, bac
 		data:           make(map[string]model.Metrics),
 		backupFilePath: backupFilePath,
 		syncBackup:     syncBackup,
+		log:            log,
 	}
 	if restore {
 		err := storage.Restore()
@@ -239,9 +253,13 @@ func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, bac
 				time.Sleep(backupInterval)
 				data, err := storage.List(ctx)
 				if err != nil {
+					storage.log.Errorw("unable to list storage", err)
 					continue
 				}
-				storage.Backup(data)
+				err = storage.Backup(data)
+				if err != nil {
+					storage.log.Errorw("unable to backup storage", err)
+				}
 			}
 		}()
 	}

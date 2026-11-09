@@ -18,20 +18,30 @@ type ResponseData struct {
 type LoggableResponseWriter struct {
 	http.ResponseWriter
 	ResponseData *ResponseData
+	wroteHeader  bool
 }
 
 func (lw LoggableResponseWriter) WriteHeader(code int) {
+	if lw.wroteHeader {
+		return
+	}
+
 	lw.ResponseWriter.WriteHeader(code)
+
+	if code >= 100 && code < 200 {
+		return
+	}
+
 	lw.ResponseData.status = code
+	lw.wroteHeader = true
 }
 
 func (lw LoggableResponseWriter) Write(data []byte) (int, error) {
-	written, err := lw.ResponseWriter.Write(data)
-	if err != nil {
-		return 0, err
+	if !lw.wroteHeader {
+		lw.WriteHeader(http.StatusOK)
 	}
+	written, err := lw.ResponseWriter.Write(data)
 	lw.ResponseData.size += written
-
 	return written, err
 }
 
@@ -41,9 +51,12 @@ func Log(next http.Handler) http.Handler {
 		start := time.Now()
 		uri := r.URL.Path
 		method := r.Method
-		rd := &ResponseData{}
+		rd := &ResponseData{
+			status: http.StatusOK,
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			logger.Log.Warn("cannot read request body", zap.Error(err))
 			http.Error(w, "cannot read request body", http.StatusBadRequest)
 			return
 		}
@@ -51,7 +64,10 @@ func Log(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		// replace writer
-		lw := &LoggableResponseWriter{w, rd}
+		lw := &LoggableResponseWriter{
+			ResponseWriter: w,
+			ResponseData: rd,
+		}
 
 		// call request
 		next.ServeHTTP(lw, r)
