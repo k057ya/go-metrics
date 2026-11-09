@@ -44,7 +44,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	var httpClient = agent.NewHTTPClient(server.URL + "/update/")
+	var httpClient = agent.NewHTTPClient(server.URL+"/update/", true, "")
 
 	type want struct {
 		code        int
@@ -229,11 +229,7 @@ func TestUpdateMetricsHandler(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 
-			request := httpClient.R().SetBody("")
-
-			if test.body != "" {
-				request.SetBody(test.body)
-			}
+			request := httpClient.R().SetBody([]byte(test.body))
 
 			method := test.method
 			if method == "" {

@@ -22,9 +22,7 @@ func (c compressedWriter) Write(bytes []byte) (int, error) {
 }
 
 func (c compressedWriter) WriteHeader(statusCode int) {
-	if statusCode < 300 {
-		c.w.Header().Set("Content-Encoding", "gzip")
-	}
+	c.w.Header().Set("Content-Encoding", "gzip")
 	c.w.WriteHeader(statusCode)
 }
 
