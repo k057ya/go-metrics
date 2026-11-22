@@ -12,10 +12,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
+	"go.uber.org/zap"
 )
 
 type DBStorage struct {
 	connection *sql.DB
+	log *zap.SugaredLogger
 }
 
 func (storage *DBStorage) List(ctx context.Context) ([]model.Metrics, error) {
@@ -241,7 +243,7 @@ func (storage *DBStorage) Migrate(db *sql.DB) error {
 	return nil
 }
 
-func NewDBStorage(dsn string) (*DBStorage, error) {
+func NewDBStorage(dsn string, log *zap.SugaredLogger) (*DBStorage, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -252,6 +254,7 @@ func NewDBStorage(dsn string) (*DBStorage, error) {
 	}
 	var storage = &DBStorage{
 		connection: db,
+		log: log,
 	}
 	err = storage.Migrate(db)
 	return storage, err

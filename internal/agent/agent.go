@@ -16,7 +16,6 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/k057ya/go-metrics/internal/config"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
-	"github.com/k057ya/go-metrics/internal/logger"
 	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/service"
 	"github.com/shirou/gopsutil/cpu"
@@ -111,6 +110,7 @@ func (c *HTTPClient) RequestContext(ctx context.Context, url string, body []byte
 
 type Agent struct {
 	Client         HTTPClient
+	Log			   *zap.SugaredLogger
 	PollInterval   time.Duration
 	ReportInterval time.Duration
 	PollCount      int64
@@ -123,11 +123,37 @@ type Metric struct {
 	Value string `json:"value"`
 }
 
+func New(
+	client_address string,
+	client_key string,
+	log *zap.SugaredLogger,
+	poll_interval time.Duration,
+	report_interval time.Duration,
+	workers int,
+) Agent {
+
+	if log == nil {
+		// no logger passed
+		log = zap.NewNop().Sugar()
+	}
+
+	return Agent{
+		Client: NewHTTPClient(
+			client_address,
+			client_key,
+		),
+		Log: log,
+		PollInterval:   poll_interval,
+		ReportInterval: report_interval,
+		WorkerCount:    workers,
+	}
+}
+
 func Run(ctx context.Context, agent Agent) error {
 
 	if agent.ReportInterval <= 0 || agent.PollInterval <= 0 || agent.ReportInterval < agent.PollInterval {
 
-		logger.Log.Warn("invalid polling / reporting intervals",
+		agent.Log.Warnw("invalid polling / reporting intervals",
 			zap.Duration("ReportInterval", agent.ReportInterval),
 			zap.Duration("PollInterval", agent.PollInterval),
 		)
@@ -153,7 +179,7 @@ func Run(ctx context.Context, agent Agent) error {
 	}
 
 	for id := range agent.WorkerCount {
-		wg.Go(func() { agent.worker(sendCtx, id, bchan) })
+		wg.Go(func() { agent.worker(sendCtx, id, bchan, agent.Log.Named("agent-worker-" + strconv.Itoa(id))) })
 	}
 	workersDone := make(chan struct{})
 	go func() {
@@ -256,10 +282,10 @@ func (agent Agent) batcher(mchan <-chan Metric, bchan chan<- []Metric) {
 	}
 }
 
-func (agent Agent) worker(ctx context.Context, id int, batches <-chan []Metric) {
+func (agent Agent) worker(ctx context.Context, id int, batches <-chan []Metric, log *zap.SugaredLogger) {
 	for batch := range batches {
-		if _, err := sendBatch(ctx, batch, agent.Client); err != nil && ctx.Err() == nil {
-			logger.Log.Warn(
+		if _, err := sendBatch(ctx, batch, agent.Client, log); err != nil && ctx.Err() == nil {
+			agent.Log.Warnw(
 				"Error sending batch",
 				zap.Int("worker", id),
 				zap.Any("batch size", len(batch)),
@@ -296,7 +322,7 @@ func sendMetric(metric Metric, client HTTPClient) error {
 	return nil
 }
 
-func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient) (int64, error) {
+func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient, log *zap.SugaredLogger) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -309,7 +335,7 @@ func sendBatch(ctx context.Context, mlist []Metric, client HTTPClient) (int64, e
 		}
 		err := metric.Parse(m.Value)
 		if err != nil {
-			logger.Log.Warn(
+			log.Warnw(
 				"cannot parse metric",
 				zap.Any("metric", m),
 				zap.Error(err),
@@ -399,7 +425,7 @@ func (agent Agent) fetchPsUtilMetrics() []Metric {
 
 	memStats, err := mem.VirtualMemory()
 	if err != nil {
-		logger.Log.Sugar().Warnw("error getting memory info", err)
+		agent.Log.Warnw("error getting memory info", err)
 	} else {
 		metrics = []Metric{
 			gauge("TotalMemory", float64(memStats.Total)),
@@ -409,7 +435,7 @@ func (agent Agent) fetchPsUtilMetrics() []Metric {
 
 	cpuStats, err := cpu.Percent(0, true)
 	if err != nil {
-		logger.Log.Sugar().Warnw("error getting cpu info", err)
+		agent.Log.Warnw("error getting cpu info", err)
 	} else {
 		for i, usage := range cpuStats {
 			metrics = append(metrics, gauge(fmt.Sprintf("CPUutilization%d", i+1), usage))

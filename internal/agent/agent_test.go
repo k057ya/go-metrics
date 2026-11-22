@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/k057ya/go-metrics/internal/middleware"
@@ -20,13 +22,15 @@ import (
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+var log = zap.NewNop().Sugar()
+
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)
 }
 
 func TestFetchMetrics(t *testing.T) {
 
-	agent := Agent{}
+	 agent := Agent{Log: log}
 
 	tests := []struct {
 		name     string
@@ -237,7 +241,7 @@ func TestSendMetricMalformedGzipBody(t *testing.T) {
 }
 
 func TestRequestMalformedGzipBody(t *testing.T) {
-	log := zap.NewNop().Sugar()
+
 	server := httptest.NewServer(middleware.Compress(log)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("malformed gzip reached handler")
 		w.WriteHeader(http.StatusNoContent)

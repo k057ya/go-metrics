@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/k057ya/go-metrics/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -46,8 +45,9 @@ func (lw LoggableResponseWriter) Write(data []byte) (int, error) {
 }
 
 // Log runs request and logs itself and returned response
-func Log(next http.Handler) http.Handler {
-	logFn := func(w http.ResponseWriter, r *http.Request) {
+func Log(log *zap.SugaredLogger) func(next http.Handler) http.Handler {
+	return func (next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		uri := r.URL.Path
 		method := r.Method
@@ -56,7 +56,7 @@ func Log(next http.Handler) http.Handler {
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			logger.Log.Warn("cannot read request body", zap.Error(err))
+			log.Warnw("cannot read request body", zap.Error(err))
 			http.Error(w, "cannot read request body", http.StatusBadRequest)
 			return
 		}
@@ -74,7 +74,7 @@ func Log(next http.Handler) http.Handler {
 
 		since := time.Since(start)
 
-		logger.Log.Info("REQUEST",
+		log.Infow("REQUEST",
 			zap.String("uri", uri),
 			zap.String("method", method),
 			zap.ByteString("body", body),
@@ -82,10 +82,10 @@ func Log(next http.Handler) http.Handler {
 			zap.Any("headers", r.Header),
 		)
 
-		logger.Log.Info("RESPONSE",
+		log.Infow("RESPONSE",
 			zap.Int("status", rd.status),
 			zap.Int("size", rd.size),
 		)
+	})
 	}
-	return http.HandlerFunc(logFn)
 }

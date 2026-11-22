@@ -26,43 +26,43 @@ type EnvConfig struct {
 
 func main() {
 	// Init logger
-	if err := logger.Initialize("info"); err != nil {
+	log, err := logger.New("info")
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error while initializing logger:", err)
 		return
 	}
-	defer logger.Log.Sync()
+	defer log.Sync()
 
 	// Prepare config
 	parseFlags()
-	if err := parseEnv(); err != nil {
-		logger.Log.Warn("Unable to parse ENV-vars, falling back to flag values", zap.Error(err))
+	if err := parseEnv(log.Named("agent-env")); err != nil {
+		log.Warnw("Unable to parse ENV-vars, falling back to flag values", zap.Error(err))
 	}
 
-	logger.Log.Sugar().Infof(
+	log.Infof(
 		"Starting agent with params: server_addr=%s, report_interval=%s, poll_interval=%s",
 		config.ClientConfig.Server.Address(),
 		config.ClientConfig.ReportInterval.String(),
 		config.ClientConfig.PollInterval.String(),
 	)
 
-	var a = agent.Agent{
-		Client: agent.NewHTTPClient(
-			config.ClientConfig.Server.Address(),
-			config.ClientConfig.Signature.Key,
-		),
-		PollInterval:   config.ClientConfig.PollInterval.Interval,
-		ReportInterval: config.ClientConfig.ReportInterval.Interval,
-		WorkerCount:    config.ClientConfig.WorkerCount,
-	}
+	var a = agent.New(
+		config.ClientConfig.Server.Address(),
+		config.ClientConfig.Signature.Key,
+		log,
+		config.ClientConfig.PollInterval.Interval,
+		config.ClientConfig.ReportInterval.Interval,
+		config.ClientConfig.WorkerCount,
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := agent.Run(ctx, a); err != nil {
-		logger.Log.Error("agent run error", zap.Error(err))
+		log.Errorw("agent run error", zap.Error(err))
 	}
 }
 
-func parseEnv() error {
+func parseEnv(log *zap.SugaredLogger) error {
 	var cfg EnvConfig
 	err := env.Parse(&cfg)
 	if err != nil {
@@ -72,7 +72,7 @@ func parseEnv() error {
 	setConf := func(target flag.Value, value string) {
 		err := target.Set(value)
 		if err != nil {
-			logger.Log.Sugar().Warnf("%v falling back to %s", err, target.String())
+			log.Warnf("%v falling back to %s", err, target.String())
 		}
 	}
 
