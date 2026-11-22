@@ -3,8 +3,6 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
-
 	"errors"
 	"io"
 	"net/http"
