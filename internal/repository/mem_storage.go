@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/k057ya/go-metrics/internal/model"
+	"go.uber.org/zap"
 )
 
 type MemStorage struct {
@@ -20,7 +21,7 @@ type MemStorage struct {
 	backupFilePath string
 	syncBackup     bool
 	backupMu       sync.Mutex
-	log            Logger
+	log            *zap.SugaredLogger
 }
 
 func (storage *MemStorage) List(ctx context.Context) ([]model.Metrics, error) {
@@ -230,7 +231,7 @@ func (storage *MemStorage) openBackupFile(mask int) (*os.File, error) {
 	return file, nil
 }
 
-func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, backupInterval time.Duration, log Logger) (*MemStorage, error) {
+func NewMemStorage(ctx context.Context, backupFilePath string, restore bool, backupInterval time.Duration, log *zap.SugaredLogger) (*MemStorage, error) {
 
 	syncBackup := backupInterval == 0
 
