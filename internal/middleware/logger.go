@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/k057ya/go-metrics/internal/logger"
 	"go.uber.org/zap"
 )
 
@@ -18,32 +17,46 @@ type ResponseData struct {
 type LoggableResponseWriter struct {
 	http.ResponseWriter
 	ResponseData *ResponseData
+	wroteHeader  bool
 }
 
 func (lw LoggableResponseWriter) WriteHeader(code int) {
+	if lw.wroteHeader {
+		return
+	}
+
 	lw.ResponseWriter.WriteHeader(code)
+
+	if code >= 100 && code < 200 {
+		return
+	}
+
 	lw.ResponseData.status = code
+	lw.wroteHeader = true
 }
 
 func (lw LoggableResponseWriter) Write(data []byte) (int, error) {
-	written, err := lw.ResponseWriter.Write(data)
-	if err != nil {
-		return 0, err
+	if !lw.wroteHeader {
+		lw.WriteHeader(http.StatusOK)
 	}
+	written, err := lw.ResponseWriter.Write(data)
 	lw.ResponseData.size += written
-
 	return written, err
 }
 
 // Log runs request and logs itself and returned response
-func Log(next http.Handler) http.Handler {
-	logFn := func(w http.ResponseWriter, r *http.Request) {
+func Log(log *zap.SugaredLogger) func(next http.Handler) http.Handler {
+	return func (next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		uri := r.URL.Path
 		method := r.Method
-		rd := &ResponseData{}
+		rd := &ResponseData{
+			status: http.StatusOK,
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Warnw("cannot read request body", zap.Error(err))
 			http.Error(w, "cannot read request body", http.StatusBadRequest)
 			return
 		}
@@ -51,14 +64,17 @@ func Log(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		// replace writer
-		lw := &LoggableResponseWriter{w, rd}
+		lw := &LoggableResponseWriter{
+			ResponseWriter: w,
+			ResponseData: rd,
+		}
 
 		// call request
 		next.ServeHTTP(lw, r)
 
 		since := time.Since(start)
 
-		logger.Log.Info("REQUEST",
+		log.Infow("REQUEST",
 			zap.String("uri", uri),
 			zap.String("method", method),
 			zap.ByteString("body", body),
@@ -66,10 +82,10 @@ func Log(next http.Handler) http.Handler {
 			zap.Any("headers", r.Header),
 		)
 
-		logger.Log.Info("RESPONSE",
+		log.Infow("RESPONSE",
 			zap.Int("status", rd.status),
 			zap.Int("size", rd.size),
 		)
+	})
 	}
-	return http.HandlerFunc(logFn)
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -13,10 +12,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/k057ya/go-metrics/internal/errorshandler"
 	"github.com/k057ya/go-metrics/internal/model"
+	"go.uber.org/zap"
 )
 
 type DBStorage struct {
 	connection *sql.DB
+	log *zap.SugaredLogger
 }
 
 func (storage *DBStorage) List(ctx context.Context) ([]model.Metrics, error) {
@@ -87,11 +88,12 @@ func (storage *DBStorage) get(ctx context.Context, key string) (model.Metrics, e
 		3 * time.Second,
 		5 * time.Second,
 	}, 3)
-	if err != nil {
-		return model.Metrics{}, err
+
+	if errors.Is(err, sql.ErrNoRows) {
+		err = newNotFoundError(err)
 	}
 
-	return m, nil
+	return m, err
 }
 
 func (storage *DBStorage) Update(ctx context.Context, _ string, m model.Metrics) (model.Metrics, error) {
@@ -225,7 +227,7 @@ func (storage *DBStorage) Close() error {
 func (storage *DBStorage) Migrate(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://migrations",
@@ -241,7 +243,7 @@ func (storage *DBStorage) Migrate(db *sql.DB) error {
 	return nil
 }
 
-func NewDBStorage(dsn string) (*DBStorage, error) {
+func NewDBStorage(dsn string, log *zap.SugaredLogger) (*DBStorage, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -252,6 +254,7 @@ func NewDBStorage(dsn string) (*DBStorage, error) {
 	}
 	var storage = &DBStorage{
 		connection: db,
+		log: log,
 	}
 	err = storage.Migrate(db)
 	return storage, err

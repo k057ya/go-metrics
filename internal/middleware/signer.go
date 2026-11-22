@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"bytes"
-	"encoding/hex"
 	"io"
 	"net/http"
 
@@ -28,7 +27,7 @@ func (srw *SignedResponseWriter) WriteHeader(statusCode int) {
 	}
 }
 
-func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
+func CheckAndSign(signatureKey string, log Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		signFn := func(w http.ResponseWriter, r *http.Request) {
 
@@ -43,14 +42,14 @@ func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
 				//
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
+					log.Warnw("error reading request body", err)
 					http.Error(w, "cannot read request body", http.StatusBadRequest)
 					return
 				}
 				// Восстанавливаем поток, чтобы обработчик тоже мог прочитать тело.
 				r.Body = io.NopCloser(bytes.NewReader(body))
 
-				hash, err := hex.DecodeString(signature)
-				if err != nil || !service.CheckSignature(body, signatureKey, hash) {
+				if !service.CheckSignatureBase64(body, signatureKey, signature) {
 					http.Error(w, "invalid signature", http.StatusBadRequest)
 					return
 				}
@@ -60,12 +59,15 @@ func CheckAndSign(signatureKey string) func(http.Handler) http.Handler {
 			// Буферизуем ответ, чтобы подписать его до отправки заголовков.
 			srw := &SignedResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(srw, r)
-			w.Header().Set("HashSHA256", service.GenSignature(srw.bodyBuf.Bytes(), signatureKey))
+			w.Header().Set("HashSHA256", service.GenSignatureBase64(srw.bodyBuf.Bytes(), signatureKey))
 			if srw.statusCode == 0 {
 				srw.statusCode = http.StatusOK
 			}
 			w.WriteHeader(srw.statusCode)
-			w.Write(srw.bodyBuf.Bytes())
+			_, err := w.Write(srw.bodyBuf.Bytes())
+			if err != nil {
+				log.Warnw("error writing response", err)
+			}
 		}
 
 		return http.HandlerFunc(signFn)
