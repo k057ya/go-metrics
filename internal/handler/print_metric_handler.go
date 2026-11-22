@@ -9,9 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
+	"go.uber.org/zap"
 )
 
-func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageReader, log Logger) {
+func PrintMetricHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageReader, log *zap.SugaredLogger) {
 
 	var metricName string
 	var metricType string

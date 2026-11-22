@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	"github.com/k057ya/go-metrics/internal/repository"
+	"go.uber.org/zap"
 )
 
-func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister, log Logger) {
+func ListAllMetrics(resp http.ResponseWriter, req *http.Request, storage repository.StorageLister, log *zap.SugaredLogger) {
 	metrics, err := storage.List(req.Context())
 	if err != nil {
 		log.Errorw("error listing metrics", err)

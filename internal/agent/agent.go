@@ -124,11 +124,11 @@ type Metric struct {
 }
 
 func New(
-	client_address string,
-	client_key string,
+	clientAddress string,
+	clientKey string,
 	log *zap.SugaredLogger,
-	poll_interval time.Duration,
-	report_interval time.Duration,
+	pollInterval time.Duration,
+	reportInterval time.Duration,
 	workers int,
 ) Agent {
 
@@ -139,12 +139,12 @@ func New(
 
 	return Agent{
 		Client: NewHTTPClient(
-			client_address,
-			client_key,
+			clientAddress,
+			clientKey,
 		),
 		Log: log,
-		PollInterval:   poll_interval,
-		ReportInterval: report_interval,
+		PollInterval:   pollInterval,
+		ReportInterval: reportInterval,
 		WorkerCount:    workers,
 	}
 }

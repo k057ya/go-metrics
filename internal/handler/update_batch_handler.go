@@ -7,9 +7,10 @@ import (
 
 	"github.com/k057ya/go-metrics/internal/model"
 	"github.com/k057ya/go-metrics/internal/repository"
+	"go.uber.org/zap"
 )
 
-func UpdateBatchHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageWriter, log Logger) {
+func UpdateBatchHandler(resp http.ResponseWriter, req *http.Request, storage repository.StorageWriter, log *zap.SugaredLogger) {
 
 	var mlist []model.Metrics
 
